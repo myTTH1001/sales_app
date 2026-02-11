@@ -1,0 +1,106 @@
+/* ===== CONTAINER ===== */
+.orders-wrapper {
+    background: #ffffff;
+    padding: 30px;
+    border-radius: 16px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.05);
+    margin-top: 20px;
+}
+
+/* ===== TABLE ===== */
+.orders-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 12px;
+}
+
+.orders-table thead th {
+    background: #f5f7fb;
+    font-weight: 600;
+    color: #555;
+    padding: 14px;
+    border: none;
+    font-size: 15px;
+}
+
+.orders-table tbody tr {
+    background: #ffffff;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+    border-radius: 12px;
+    transition: 0.2s;
+}
+
+.orders-table tbody tr:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+}
+
+.orders-table tbody td {
+    padding: 18px;
+    border: none;
+    vertical-align: middle;
+}
+
+/* ===== BADGE ===== */
+.status-badge {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.status-sold {
+    background: #e6f9f0;
+    color: #00a65a;
+}
+
+.status-draft {
+    background: #fff5e6;
+    color: #ff9800;
+}
+
+/* ===== BUTTON ===== */
+.btn-delete {
+    background: #ff4d4f;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.btn-delete:hover {
+    background: #e60023;
+}
+
+/* ===== PAGINATION ===== */
+.pagination {
+    margin-top: 30px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.page-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background: #f1f3f8;
+    cursor: pointer;
+    font-weight: 600;
+    transition: 0.2s;
+}
+
+.page-btn:hover {
+    background: #e0e4f5;
+}
+
+.page-btn.active {
+    background: #6366f1;
+    color: white;
+}

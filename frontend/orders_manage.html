@@ -1,100 +1,178 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Quản lý đơn hàng</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quản lý đơn hàng &mdash; Đặc sản Thành Phát</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <!-- CSS hệ thống -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Mukta:300,400,700">
+  <link rel="stylesheet" href="/static/fonts/icomoon/style.css">
+
   <link rel="stylesheet" href="/static/css/bootstrap.min.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="/static/css/magnific-popup.css">
+  <link rel="stylesheet" href="/static/css/jquery-ui.css">
+  <link rel="stylesheet" href="/static/css/owl.carousel.min.css">
+  <link rel="stylesheet" href="/static/css/owl.theme.default.min.css">
+  <link rel="stylesheet" href="/static/css/aos.css">
   <link rel="stylesheet" href="/static/css/style.css">
-
-  <style>
-    body { background: #f4f6f9; }
-    .card { border-radius: 14px; }
-    .table th { background: #f1f3f5; }
-  </style>
+  
+  <link rel="stylesheet" href="/static/css/orders_manage.css">
 </head>
+
 <body>
+<div class="site-wrap">
 
-<div class="container-fluid p-4">
+  <!-- ===== HEADER GIỐNG INDEX ===== -->
+  <header class="site-navbar" role="banner">
+    <div class="site-navbar-top">
+      <div class="container">
+        <div class="row align-items-center">
 
-  <!-- ===== TITLE ===== -->
-  <h3 class="fw-bold text-primary mb-4">
-    <a href="/index.html">
-      ← Quản lý đơn hàng
-    </a>
-  </h3>
+          <div class="col-6 col-md-4 text-left">
+            <form class="site-block-top-search">
+              <span class="icon icon-search2"></span>
+              <input type="text" class="form-control border-0" placeholder="Tìm đơn hàng...">
+            </form>
+          </div>
 
-  <!-- ===== FILTER ===== -->
-  <div class="card shadow-sm mb-4">
-    <div class="card-body row g-3 align-items-end">
+          <div class="col-12 col-md-4 text-center">
+            <div class="site-logo">
+              <a href="index.html">ĐẶC SẢN THÀNH PHÁT</a>
+            </div>
+          </div>
 
-      <div class="col-md-3">
-        <label class="fw-semibold">Trạng thái</label>
-        <select id="order-status" class="form-select w-auto">
-          <option value="confirmed">✅ Đơn hàng đã bán</option>
-          <option value="cancelled">↩️ Đơn huỷ / hoàn</option>
-          <option value="draft">📝 Đơn nháp</option>
-        </select>
+          <div class="col-6 col-md-4 text-right">
+            <div class="site-top-icons">
+              <ul>
+                <li><a href="#"><span class="icon icon-person"></span></a></li>
+                <li><a href="cart.html"><span class="icon icon-shopping_cart"></span></a></li>
+              </ul>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <nav class="site-navigation text-center">
+      <div class="container">
+        <ul class="site-menu d-none d-md-block">
+          <li><a href="index.html">Trang chủ</a></li>
+          <li><a href="index.html">Cửa hàng</a></li>
+          <li class="active"><a href="orders_manage.html">Quản lý đơn hàng</a></li>
+          <li><a href="#">Liên hệ</a></li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+
+  <!-- ===== BREADCRUMB ===== -->
+  <div class="bg-light py-3">
+    <div class="container">
+      <div class="row">
+        <div class="col-md-12 mb-0">
+          <a href="index.html">Trang chủ</a>
+          <span class="mx-2 mb-0">/</span>
+          <strong class="text-black">Quản lý đơn hàng</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CONTENT ===== -->
+  <div class="site-section">
+    <div class="container">
+
+      <!-- Bộ lọc -->
+      <div class="row mb-4">
+        <div class="col-md-12">
+          <div class="p-4 bg-light rounded">
+            <div class="row">
+
+              <div class="col-md-3">
+                <label>Trạng thái</label>
+                <select id="order-status" class="form-control">
+                  <option value="confirmed">✅ Đơn hàng đã bán</option>
+                  <option value="cancelled">↩️ Đơn huỷ / hoàn</option>
+                  <option value="draft">📝 Đơn nháp</option>
+                </select>
+              </div>
+
+              <div class="col-md-3">
+                <label>Từ ngày</label>
+                <input type="date" id="date-from" class="form-control">
+              </div>
+
+              <div class="col-md-3">
+                <label>Đến ngày</label>
+                <input type="date" id="date-to" class="form-control">
+              </div>
+
+              <div class="col-md-3 d-flex align-items-end">
+                <button id="btn-filter" class="btn btn-primary btn-block">
+                  Lọc
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div class="col-md-3">
-        <label class="fw-semibold">Từ ngày</label>
-        <input type="date" id="date-from" class="form-control">
+      <!-- Bảng đơn hàng -->
+      <div class="row">
+        <div class="col-md-12">
+          <!-- <div class="table-responsive"> -->
+            <!-- <table class="table table-bordered"> -->
+          <div class="orders-wrapper">
+            <table class="orders-table">
+              <thead class="bg-light">
+                <tr>
+                  <th>Mã đơn</th>
+                  <th>Ngày tạo</th>
+                  <th class="text-right">Tổng tiền</th>
+                  <th class="text-center">Trạng thái</th>
+                  <th class="text-center">Hành động</th>
+                </tr>
+              </thead>
+              <tbody id="orders-body">
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
-      <div class="col-md-3">
-        <label class="fw-semibold">Đến ngày</label>
-        <input type="date" id="date-to" class="form-control">
-      </div>
-
-      <div class="col-md-3">
-        <button class="btn btn-primary w-100" id="btn-filter">
-          <i class="bi bi-funnel"></i> Lọc dữ liệu
-        </button>
+      <!-- Pagination giống index -->
+      <div class="row mt-4">
+        <div class="col-md-12 text-center">
+          <div class="site-block-27">
+            <ul id="pagination"></ul>
+          </div>
+        </div>
       </div>
 
     </div>
   </div>
 
-  <!-- ===== TABLE ===== -->
-  <div class="card shadow-sm">
-    <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0">
-        <thead>
-          <tr>
-            <th>Mã đơn</th>
-            <th>Ngày tạo</th>
-            <th class="text-end">Tổng tiền</th>
-            <th class="text-center">Trạng thái</th>
-            <th class="text-center">Hành động</th>
-          </tr>
-        </thead>
-        <tbody id="orders-body">
-          <tr>
-            <td colspan="5" class="text-center text-muted py-4">
-              Đang tải dữ liệu...
-            </td>
-          </tr>
-        </tbody>
-      </table>
+  <!-- ===== FOOTER giống index ===== -->
+  <footer class="site-footer border-top">
+    <div class="container text-center py-4">
+      <p>
+        &copy;
+        <script>document.write(new Date().getFullYear());</script>
+        Đặc sản Thành Phát
+      </p>
     </div>
-  </div>
-
-  <!-- ===== PAGINATION ===== -->
-  <nav class="mt-4">
-    <ul class="pagination justify-content-center" id="pagination">
-      <!-- JS render -->
-    </ul>
-  </nav>
+  </footer>
 
 </div>
 
-<!-- ===== JS ===== -->
-<!-- <script src="/static/js/bootstrap.bundle.min.js"></script> -->
-<script src="/static/js/auth.js"></script>
+<script src="/static/js/jquery-3.3.1.min.js"></script>
+<script src="/static/js/jquery-ui.js"></script>
+<script src="/static/js/popper.min.js"></script>
+<script src="/static/js/bootstrap.min.js"></script>
+<script src="/static/js/main.js"></script>
+
 <script src="/static/js/orders_manage.js"></script>
 
 </body>
