@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Đăng nhập | Đặc sản Thành Phát</title>
+
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <link rel="icon" href="/static/images/favicon.ico">
+    <link rel="stylesheet" href="/static/css/graindashboard.css">
+  </head>
+
+  <body class="">
+
+    <main class="main">
+
+      <div class="content">
+
+			<div class="container-fluid pb-5">
+
+				<div class="row justify-content-md-center">
+					<div class="card-wrapper col-12 col-md-4 mt-5">
+						<div class="brand text-center mb-3">
+							<h2><a href="/"><img src="/static/images/favicon-32x32.png">ĐẶC SẢN THÀNH PHÁT</a></h2>
+						</div>
+						<div class="card">
+							<div class="card-body">
+								<h4 class="card-title">Đăng nhập</h4>
+								<form>
+									<div class="form-group">
+										<label for="email">Tên đăng nhập</label>
+										<!-- <input id="email" type="email" class="form-control" name="email" required="" autofocus=""> -->
+										<input id="username" type="text" class="form-control" name="username" required="" autofocus="">
+
+									</div>
+
+									<div class="form-group">
+										<label for="password">Mật khẩu
+										</label>
+										<input id="password" type="password" class="form-control" name="password" required="">
+										<div class="text-right">
+											<a href="password-reset.html" class="small">
+												Quên mật khẩu?
+											</a>
+										</div>
+									</div>
+
+									<div class="form-group">
+										<div class="form-check position-relative mb-2">
+										  <input type="checkbox" class="form-check-input d-none" id="remember" name="remember">
+										  <label class="checkbox checkbox-xxs form-check-label ml-1" for="remember"
+												 data-icon="&#xe936">Lưu thông tin đăng nhập</label>
+										</div>
+									</div>
+
+									<div class="form-group no-margin">
+										<button type="button" class="btn btn-primary btn-block" onclick="login()">
+										Đăng Nhập
+										</button>
+
+										<p id="msg" class="text-danger text-center mt-2"></p>
+
+									</div>
+									<div class="text-center mt-3 small">
+										<!-- Tạo tài khoản? <a href="register.html">Sign Up</a> -->
+										Vui lòng liên hệ Admin để tạo tài khoản
+									</div>
+								</form>
+							</div>
+						</div>
+						<footer class="footer mt-3">
+							<div class="container-fluid">
+								<div class="footer-content text-center small">
+									<p>
+									Copyright &copy;
+									<script>
+										document.write(new Date().getFullYear());
+									</script> 
+									All rights reserved |
+									<i class="icon-heart" aria-hidden="true"></i> 
+									<a href="https://www.facebook.com/DoDinhDinh0410" target="_blank" class="text-primary">
+										Đặc sản Thành Phát 
+									</a>
+									<i class="icon-heart" aria-hidden="true"></i> 
+									</p>
+								</div>
+							</div>
+						</footer>
+					</div>
+				</div>
+			</div>
+      </div>
+    </main>
+
+	<script src="/static/js/graindashboard.js"></script>
+    <script src="/static/js/graindashboard.vendor.js"></script>
+	<script>
+		async function login() {
+			const username = document.getElementById("username").value;
+			const password = document.getElementById("password").value;
+
+			const formData = new URLSearchParams();
+			formData.append("username", username);
+			formData.append("password", password);
+
+			const res = await fetch("/api/auth/login", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/x-www-form-urlencoded"
+				},
+				body: formData
+			});
+
+			const data = await res.json();
+
+			if (res.ok) {
+				localStorage.setItem("token", data.access_token);
+				window.location.href = "/index.html";
+			} else {
+				document.getElementById("msg").innerText = data.detail || "Đăng nhập thất bại";
+			}
+		}
+	</script>
+
+  </body>
+</html>

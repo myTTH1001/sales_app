@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <h4 class="card-title">Đăng ký tài khoản</h4>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <link rel="icon" href="/static/images/favicon.ico">
+    <link rel="stylesheet" href="/static/css/graindashboard.css">
+    
+    <link rel="icon" href="/static/images/favicon.ico">
+  </head>
+
+  <body class="">
+
+    <main class="main">
+
+      <div class="content">
+
+			<div class="container-fluid pb-5">
+
+				<div class="row justify-content-md-center">
+					<div class="card-wrapper col-12 col-md-4 mt-5">
+						<div class="brand text-center mb-3">
+							<h2><a href="/"><img src="/static/images/favicon-32x32.png">ĐẶC SẢN THÀNH PHÁT</a></h2>
+						</div>
+						<div class="card">
+							<div class="card-body">
+								<h4 class="card-title">Đăng nhập</h4>
+								<form>
+									<div class="form-group">
+                                    <label for="username">Tên đăng nhập</label>
+                                    <input id="username" type="text" class="form-control" required autofocus>
+                                    </div>
+
+                                    <div class="form-group">
+                                    <label for="password">Mật khẩu</label>
+                                    <input id="password" type="password" class="form-control" required>
+                                    </div>
+
+                                    <div class="form-group">
+                                    <label for="confirm">Nhập lại mật khẩu</label>
+                                    <input id="confirm" type="password" class="form-control" required>
+                                    </div>
+
+                                    <div class="form-group no-margin">
+                                    <button type="button" class="btn btn-primary btn-block" onclick="register()">
+                                        Đăng ký
+                                    </button>
+                                    </div>
+
+                                    <p id="msg" class="text-center mt-2"></p>
+
+                                    <div class="text-center mt-3 small">
+                                    Đã có tài khoản? <a href="/login.html">Đăng nhập</a>
+                                    </div>
+
+								</form>
+							</div>
+						</div>
+						<footer class="footer mt-3">
+							<div class="container-fluid">
+								<div class="footer-content text-center small">
+									<p>
+									Copyright &copy;
+									<script>
+										document.write(new Date().getFullYear());
+									</script> 
+									All rights reserved |
+									<i class="icon-heart" aria-hidden="true"></i> 
+									<a href="https://www.facebook.com/DoDinhDinh0410" target="_blank" class="text-primary">
+										Đặc sản Thành Phát 
+									</a>
+									<i class="icon-heart" aria-hidden="true"></i> 
+									</p>
+								</div>
+							</div>
+						</footer>
+					</div>
+				</div>
+			</div>
+      </div>
+    </main>
+
+	<script src="/static/js/graindashboard.js"></script>
+    <script src="/static/js/graindashboard.vendor.js"></script>
+	<script>
+    async function register() {
+        const username = document.getElementById("username").value.trim();
+        const password = document.getElementById("password").value;
+        const confirm = document.getElementById("confirm").value;
+        const msg = document.getElementById("msg");
+
+        if (!username || !password) {
+            msg.innerText = "Vui lòng nhập đầy đủ thông tin";
+            msg.className = "text-danger text-center";
+            return;
+        }
+
+        if (password !== confirm) {
+            msg.innerText = "Mật khẩu nhập lại không khớp";
+            msg.className = "text-danger text-center";
+            return;
+        }
+
+        const formData = new URLSearchParams();
+        formData.append("username", username);
+        formData.append("password", password);
+
+        const res = await fetch("/api/auth/register", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: formData
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+            msg.innerText = "Đăng ký thành công! Chuyển sang đăng nhập...";
+            msg.className = "text-success text-center";
+
+            setTimeout(() => {
+                window.location.href = "/login.html";
+            }, 1500);
+        } else {
+            msg.innerText = data.detail || "Đăng ký thất bại";
+            msg.className = "text-danger text-center";
+        }
+    }
+    </script>
+
+
+  </body>
+</html>

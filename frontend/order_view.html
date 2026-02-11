@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chi tiết đơn hàng</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Bootstrap -->
+  <link rel="stylesheet" href="/static/css/bootstrap.min.css" />
+
+  <style>
+    body {
+      background: #f8f9fa;
+    }
+    .card {
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<nav class="navbar navbar-light bg-white shadow-sm mb-4">
+  <div class="container">
+    <a class="navbar-brand fw-bold" href="/orders_manage.html">
+      ← Quản lý đơn hàng
+    </a>
+  </div>
+</nav>
+
+<!-- ===== CONTENT ===== -->
+<div class="container">
+  <div class="card shadow-sm">
+    <div class="card-body">
+
+      <!-- Thông tin đơn -->
+      <div class="row mb-3">
+        <div class="col-md-4">
+          <strong>Mã đơn:</strong>
+          <span id="order-id"></span>
+        </div>
+        <div class="col-md-4">
+          <strong>Trạng thái:</strong>
+          <span id="order-status"></span>
+        </div>
+        <div class="col-md-4">
+          <strong>Thời gian:</strong>
+          <span id="order-time"></span>
+        </div>
+      </div>
+
+      <hr />
+
+      <!-- Danh sách sản phẩm -->
+      <div class="table-responsive">
+        <table class="table table-bordered align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Sản phẩm</th>
+              <th class="text-center" style="width:120px">Số lượng</th>
+              <th class="text-end" style="width:150px">Đơn giá</th>
+              <th class="text-end" style="width:180px">Thành tiền</th>
+            </tr>
+          </thead>
+          <tbody id="order-items">
+            <tr>
+              <td colspan="4" class="text-center text-muted">
+                Đang tải dữ liệu...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Tổng tiền -->
+      <div class="text-end mt-3">
+        <h5>
+          Tổng tiền:
+          <span class="text-danger fw-bold" id="order-total">0 VND</span>
+        </h5>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ===== JS ===== -->
+<script src="/static/js/bootstrap.bundle.min.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", loadOrderDetail);
+
+async function loadOrderDetail() {
+  const params = new URLSearchParams(window.location.search);
+  const orderId = params.get("order_id");
+
+  if (!orderId) {
+    alert("Thiếu mã đơn hàng");
+    return;
+  }
+
+  const token = localStorage.getItem("token");
+  if (!token) {
+    window.location.href = "/login.html";
+    return;
+  }
+
+  const res = await fetch(`/api/orders/${orderId}`, {
+    headers: { Authorization: "Bearer " + token }
+  });
+
+  if (!res.ok) {
+    alert("Không thể tải đơn hàng");
+    return;
+  }
+
+  const order = await res.json();
+
+  // ===== Header info =====
+  document.getElementById("order-id").innerText = `#${order.id}`;
+
+  document.getElementById("order-status").innerText =
+    order.status === "confirmed" ? "Đã bán"
+    : order.status === "cancelled" ? "Đã huỷ"
+    : "Đơn nháp";
+
+  document.getElementById("order-time").innerText =
+    new Date(order.created_at + "Z")
+      .toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+
+  // ===== Items =====
+  const tbody = document.getElementById("order-items");
+  tbody.innerHTML = "";
+
+  let total = 0;
+
+  order.items.forEach(item => {
+    const itemTotal = item.price * item.quantity;
+    total += itemTotal;
+
+    tbody.innerHTML += `
+      <tr>
+        <td>${item.product_name}</td>
+        <td class="text-center">${item.quantity}</td>
+        <td class="text-end">${item.price.toLocaleString()} VND</td>
+        <td class="text-end">${itemTotal.toLocaleString()} VND</td>
+      </tr>
+    `;
+  });
+
+  document.getElementById("order-total").innerText =
+    total.toLocaleString() + " VND";
+}
+</script>
+
+</body>
+</html>
