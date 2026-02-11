@@ -52,7 +52,8 @@
 
 .status-sold {
     background: #e6f9f0;
-    color: #00a65a;
+    color: #16a34a;
+    border: 1px solid #16a34a;
 }
 
 .status-draft {
@@ -103,4 +104,36 @@
 .page-btn.active {
     background: #6366f1;
     color: white;
+}
+
+.filter-btn {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  border: none;
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-weight: 600;
+  font-size: 15px;
+  color: #fff;
+  transition: all 0.25s ease;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
+}
+
+.filter-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(79, 70, 229, 0.35);
+}
+
+.filter-btn:active {
+  transform: scale(0.97);
+}
+
+.action-buttons .btn {
+  border-radius: 8px;
+  padding: 6px 10px;
+  transition: all 0.2s ease;
+}
+
+.action-buttons .btn-outline-danger:hover {
+  background-color: #dc3545;
+  color: #fff;
 }

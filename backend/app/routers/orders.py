@@ -133,7 +133,7 @@ def cancel_order(
 
     order = db.query(Order).filter(
         Order.id == order_id,
-        Order.status.in_(["draft", "confirmed"])
+        Order.status.in_(["confirmed"])
     ).first()
 
     if not order:
@@ -324,7 +324,7 @@ def get_order_detail(
         )
         .filter(
             Order.id == order_id,
-            Order.status.in_(["draft", "confirmed"])
+            Order.status.in_(["draft", "cancelled", "confirmed"])
         )
         .first()
     )

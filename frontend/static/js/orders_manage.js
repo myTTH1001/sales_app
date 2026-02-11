@@ -67,13 +67,34 @@ async function loadOrders(page = currentPage) {
   data.orders.forEach(order => {
     const time = new Date(order.created_at + "Z")
       .toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+    
+    let statusBadge = "";
 
-    const statusBadge =
-      order.status === "confirmed"
-        ? `<span class="badge bg-success">Đã bán</span>`
-        : order.status === "cancelled"
-        ? `<span class="badge bg-secondary">Đã huỷ</span>`
-        : `<span class="badge bg-warning text-dark">Nháp</span>`;
+    if (order.status === "confirmed") {
+      statusBadge = `<span class="status-badge status-sold">
+                        <i class="bi bi-check-circle-fill"></i> Đã bán
+                    </span>`;
+    } else if (order.status === "cancelled") {
+      statusBadge = `<span class="status-badge" 
+                          style="background:#fee2e2;color:#dc2626;border:1px solid #dc2626">
+                          <i class="bi bi-x-circle-fill"></i> Đã huỷ
+                    </span>`;
+    } else {
+      statusBadge = `<span class="status-badge status-draft">
+                        <i class="bi bi-pencil-fill"></i> Nháp
+                    </span>`;
+    }
+
+    let cancelBtn = "";
+
+    if (order.status === "confirmed") {
+      cancelBtn = `
+        <button class="btn btn-sm btn-outline-danger"
+          onclick="cancelOrder(${order.id})">
+          <i class="bi bi-x-circle"></i>
+        </button>
+      `;
+    }
 
     tbody.innerHTML += `
       <tr>
@@ -86,6 +107,7 @@ async function loadOrders(page = currentPage) {
             onclick="viewOrder(${order.id})">
             <i class="bi bi-eye"></i>
           </button>
+          ${cancelBtn}
         </td>
       </tr>
     `;
@@ -93,6 +115,39 @@ async function loadOrders(page = currentPage) {
 
   renderPagination(data.total_pages);
 }
+async function cancelOrder(order_id) {
+  if (!confirm("Bạn có chắc muốn hủy đơn hàng này?")) return;
+
+  try {
+    const token = localStorage.getItem("token");
+
+    const res = await fetch(`/api/orders/cancelled/${order_id}`, {
+      method: "POST", // hoặc PUT nếu bạn dùng PUT
+      headers: {
+        "Authorization": "Bearer " + token
+      }
+    });
+
+    // 🔥 Xử lý riêng 403
+    if (res.status === 403) {
+      alert("Bạn không có quyền hủy đơn hàng này!");
+      return;
+    }
+
+    if (!res.ok) {
+      const errorData = await res.json();
+      alert(errorData.detail || "Có lỗi xảy ra!");
+      return;
+    }
+
+    alert("Hủy đơn thành công!");
+    loadOrders();
+
+  } catch (err) {
+    alert("Lỗi hệ thống: " + err.message);
+  }
+}
+
 
 function renderPagination(totalPages) {
   const pagination = document.getElementById("pagination");

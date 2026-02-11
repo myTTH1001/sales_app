@@ -45,3 +45,26 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 });
+
+function checkAuth() {
+  const token = localStorage.getItem("token");
+
+  if (!token) {
+    window.location.href = "/login.html";
+    return;
+  }
+
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    const now = Math.floor(Date.now() / 1000);
+
+    if (payload.exp < now) {
+      localStorage.removeItem("token");
+      alert("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+      window.location.href = "/login.html";
+    }
+  } catch (err) {
+    localStorage.removeItem("token");
+    window.location.href = "/login.html";
+  }
+}
