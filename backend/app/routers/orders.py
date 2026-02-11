@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
+from typing import Optional
 
+from datetime import datetime, date
 from app.database import get_db
 from app.models import Order, OrderItem, Product, Invoice, OrderStatus
 from app.security import get_current_user
@@ -57,8 +59,6 @@ def save_draft_order(
 
     db.commit()
     return {"message": "Đã lưu đơn nháp"}
-
-
 
 # =========================================================
 # XÁC NHẬN ĐƠN HÀNG - KHI ẤN "THANH TOÁN"
@@ -148,7 +148,6 @@ def cancel_order(
     return {
         "message": "Admin đã hủy đơn hàng"
     }
-
 
 # =========================================================
 # XÓA ĐƠN HÀNG - CHỈ ADMIN
@@ -257,31 +256,56 @@ def delete_draft_order(
 def get_orders_manage(
     status: str = Query(...),
     db: Session = Depends(get_db),
-    user = Depends(get_current_user)
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None
 ):
+    query = db.query(Order)
     if status not in ["confirmed", "cancelled", "draft"]:
         raise HTTPException(
             status_code=400,
             detail="Status không hợp lệ"
         )
+    # ===== LỌC TRẠNG THÁI =====
+    if status:
+        query = query.filter(Order.status == status)
 
+    # ===== LỌC TỪ NGÀY =====
+    if date_from:
+        start_datetime = datetime.combine(date_from, datetime.min.time())
+        query = query.filter(Order.created_at >= start_datetime)
+
+    # ===== LỌC ĐẾN NGÀY =====
+    if date_to:
+        end_datetime = datetime.combine(date_to, datetime.max.time())
+        query = query.filter(Order.created_at <= end_datetime)
+
+    # ===== ĐẾM TỔNG SỐ =====
+    total_count = query.count()
+
+    # ===== PHÂN TRANG =====
     orders = (
-        db.query(Order)
-        .filter(Order.status == status)
-        .order_by(Order.created_at.desc())
+        query.order_by(Order.created_at.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
         .all()
     )
 
     return {
-        "count": len(orders),
         "orders": [
             {
                 "id": o.id,
+                "created_at": o.created_at.isoformat(),
                 "total": o.total,
-                "created_at": o.created_at
+                "status": o.status
             }
             for o in orders
-        ]
+        ],
+        "count": total_count,
+        "page": page,
+        "limit": limit,
+        "total_pages": (total_count + limit - 1) // limit
     }
 
 # =========================================================
