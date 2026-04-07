@@ -85,6 +85,7 @@ def comfirmed_order(
 
     # Chi tiết đơn hàng 
     total = 0    
+    invoice_items = []
     for item in items:
         # 🔧 FIX 2: kiểm tra product
         product = db.query(Product).filter(
@@ -92,10 +93,7 @@ def comfirmed_order(
         ).first()
 
         if not product:
-            raise HTTPException(
-                404,
-                f"Sản phẩm {item['product_id']} không tồn tại"
-            )
+            raise HTTPException(404, f"Sản phẩm {item['product_id']} không tồn tại")
 
         db_item = OrderItem(
             order_id=order.id,
@@ -103,15 +101,33 @@ def comfirmed_order(
             quantity=item["quantity"],
             price=item["price"]
         )
-        total += item["price"] * item["quantity"]
+        subtotal = item["price"] * item["quantity"]
+        total += subtotal
+        # total += item["price"] * item["quantity"]
         db.add(db_item)
 
+        invoice_items.append({
+            "name": product.name,
+            "qty": item["quantity"],
+            "price": item["price"],
+            "subtotal": subtotal
+        })
+
     order.total = total
+    invoice = Invoice(
+        order_id=order.id,
+        total=total
+    )
+    db.add(invoice)
     db.commit()
+    db.refresh(order)
     return {
         "message": "Đã bán thành công đơn hàng !!!",
         "order_id": order.id,
-        "total": total
+        "created_at": order.created_at.strftime("%d/%m/%Y %H:%M:%S"),
+        "cashier": user["username"],
+        "total": total,
+        "items": invoice_items
     }
 
 # =========================================================
@@ -352,9 +368,3 @@ def get_order_detail(
         ]
     }
 
-
-
-
-
-# =========================================================
-# =========================================================
