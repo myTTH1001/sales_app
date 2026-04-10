@@ -314,8 +314,35 @@ async function printInvoice(invoice) {
     backgroundColor: "#ffffff"
   });
 
-  const imageData = canvas.toDataURL("image/png");
+  // Resize về đúng khổ in 384px (48mm)
+  const targetWidth = 384; 
+  const scaleFactor = targetWidth / canvas.width;
+  const targetHeight = canvas.height * scaleFactor;
 
+  const resizedCanvas = document.createElement("canvas");
+  resizedCanvas.width = targetWidth;
+  resizedCanvas.height = targetHeight;
+
+  const ctx = resizedCanvas.getContext("2d");
+  ctx.drawImage(canvas, 0, 0, targetWidth, targetHeight);
+
+  const imageData = resizedCanvas.toDataURL("image/png");
+  // const imageData = canvas.toDataURL("image/png");
+
+  // Sau khi có imageData
+  fetch("/api/orders/print", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imageData })
+  })
+  .then(res => res.json())
+  .then(data => {
+    alert(data.message || "In hóa đơn thành công!");
+  })
+  .catch(err => {
+    console.error("Lỗi in hóa đơn:", err);
+    alert("Không thể in hóa đơn");
+  });
   document.body.removeChild(tempDiv);
 
   const previewWindow = window.open("", "_blank");

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session, joinedload
 from typing import Optional
 
@@ -130,6 +130,28 @@ def comfirmed_order(
         "items": invoice_items
     }
 
+@router.post("/print")
+async def print_invoice(request: Request):
+    from escpos.printer import Serial
+    from PIL import Image
+    import base64, io
+    data = await request.json()
+    image_base64 = data.get("imageData")
+
+    if not image_base64:
+        return {"error": "Thiếu dữ liệu ảnh"}
+
+    # Giải mã base64 (bỏ phần "data:image/png;base64,")
+    image_bytes = base64.b64decode(image_base64.split(",")[1])
+    img = Image.open(io.BytesIO(image_bytes))
+
+    # Kết nối tới máy in Bluetooth PT210 qua COM6
+    p = Serial(devfile="COM6", baudrate=115200, timeout=1)
+    p.image(img)
+    p.cut()
+    p.close()
+
+    return {"message": "Đã in hóa đơn thành công!"}
 # =========================================================
 # 3️⃣ HỦY ĐƠN HÀNG - CHỈ ADMIN
 # =========================================================
