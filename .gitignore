@@ -3,3 +3,4 @@ __pycache__/
 .env
 venv/
 frontend/static/images/QR.jpg
+backend/app/main.py
