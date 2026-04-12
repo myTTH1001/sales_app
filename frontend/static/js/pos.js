@@ -2,6 +2,7 @@
 let products = [];
 let cart = {};
 let lastInvoice = null;
+let currentList = [];
 /* ================= LOAD PRODUCTS ================= */
 async function loadProducts() {
   const res = await fetch("/api/products/", {
@@ -11,7 +12,8 @@ async function loadProducts() {
   });
 
   products = await res.json();
-  renderProducts(products);
+  currentList = products;
+  renderProducts(currentList);
 }
 
 /* ================= RENDER PRODUCTS ================= */
@@ -22,14 +24,17 @@ function renderProducts(list) {
   container.innerHTML = "";
 
   list.forEach(p => {
+    const qty = cart[String(p.id)]?.qty || 0;
     container.innerHTML += `
       <div class="col-6 col-lg-4 mb-3">
-        <div class="card h-100 pos-product" data-id="${p.id}">
-          <img src="${p.image || "/static/images/no_image.png"}"
+        <div class="card h-100 pos-product position-relative" data-id="${p.id}">
+          <img src="${p.image || "/static/uploads/no_image.png"}"
                class="card-img-top"
                style="height:130px;object-fit:cover">
           <div class="card-body text-center p-2">
-            <div class="font-weight-bold small">${p.name}</div>
+            <div class="font-weight-bold small">
+              ${p.name}${qty > 0 ? ` (x${qty})` : ""}
+            </div>
             <div class="text-danger font-weight-bold">
               ${Number(p.price).toLocaleString()} VNĐ
             </div>
@@ -47,13 +52,15 @@ function renderProducts(list) {
 
 /* ================= CART ================= */
 function addToCart(id) {
-  const p = products.find(x => x.id === id);
+  const p = currentList.find(x => x.id === id);
   if (!p) return;
 
   if (!cart[id]) cart[id] = { ...p, qty: 1 };
   else cart[id].qty++;
 
+  localStorage.setItem("current_cart", JSON.stringify(cart));
   renderCart();
+  updateProductQtyUI(id);
 }
 
 function changeQty(id, delta) {
@@ -62,12 +69,16 @@ function changeQty(id, delta) {
   cart[id].qty += delta;
   if (cart[id].qty <= 0) delete cart[id];
 
+  localStorage.setItem("current_cart", JSON.stringify(cart));
   renderCart();
+  updateProductQtyUI(id);
 }
 
 function removeItem(id) {
   delete cart[id];
+  localStorage.setItem("current_cart", JSON.stringify(cart));
   renderCart();
+  updateProductQtyUI(id);
 }
 
 function renderCart() {
@@ -122,7 +133,9 @@ function renderCart() {
 document.getElementById("btn-clear")?.addEventListener("click", () => {
   if (confirm("Huỷ đơn hiện tại?")) {
     cart = {};
+    localStorage.setItem("current_cart", JSON.stringify(cart));
     renderCart();
+    renderProducts(currentList);
   }
 });
 
@@ -195,24 +208,41 @@ document.getElementById("btn-pay")?.addEventListener("click", async () => {
 });
 
 /* ================= SEARCH PRODUCTS ================= */
+function updateProductQtyUI(id) {
+  const el = document.querySelector(`.pos-product[data-id="${id}"]`);
+  if (!el) return;
+
+  const qty = cart[id]?.qty || 0;
+  const nameEl = el.querySelector(".font-weight-bold");
+
+  const product = products.find(p => p.id === id);
+  if (!product) return;
+
+  nameEl.innerHTML = `
+    ${product.name}${qty > 0 ? ` (x${qty})` : ""}
+  `;
+}
 /* ================= INIT ================= */
 document.addEventListener("DOMContentLoaded", () => {
   // ❌ MẶC ĐỊNH: GIỎ LUÔN TRỐNG
   cart = {};
   localStorage.removeItem("current_cart");
   localStorage.removeItem("current_order_id");
-
+  // const savedCart = localStorage.getItem("current_cart");
+  // cart = savedCart ? JSON.parse(savedCart) : {};  
+  
   loadProducts();
   renderCart();
   // tìm kiếm sản phẩm
-  const searchInput = document.getElementById("search-input");
+  const searchInput = document.getElementById("search-input")?.focus();
 
   if (searchInput) {
     searchInput.addEventListener("input", (e) => {
       const keyword = e.target.value.trim().toLowerCase();
 
       if (keyword === "") {
-        renderProducts(products);
+        currentList = products;
+        renderProducts(currentList);
         return;
       }
 
@@ -220,8 +250,8 @@ document.addEventListener("DOMContentLoaded", () => {
         product.name &&
         product.name.toLowerCase().includes(keyword)
       );
-
-      renderProducts(filtered);
+      currentList = filtered;
+      renderProducts(currentList );
     });
   }
 });
