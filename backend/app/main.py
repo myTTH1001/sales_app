@@ -10,7 +10,11 @@ from app import models
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIR = os.path.join(BASE_DIR, "..", "frontend")
 
-app = FastAPI(title="🔥 ĐẶC SẢN QUÊ HƯƠNG 🔥")
+app = FastAPI(  
+                docs_url=None,
+                redoc_url=None,
+                title="🔥 ĐẶC SẢN QUÊ HƯƠNG 🔥"
+                )
 
 models.Base.metadata.create_all(bind=engine)
 
