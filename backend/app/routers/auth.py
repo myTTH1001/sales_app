@@ -42,7 +42,8 @@ def login(
     token = create_access_token({
     "user_id": user.id,
     "sub": user.username,
-    "role": user.role
+    "role": user.role,
+    "store_id":user.store_id
 })
 
 

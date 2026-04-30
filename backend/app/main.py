@@ -11,8 +11,8 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIR = os.path.join(BASE_DIR, "..", "frontend")
 
 app = FastAPI(  
-                docs_url=None,
-                redoc_url=None,
+                # docs_url=None,
+                # redoc_url=None,
                 title="🔥 ĐẶC SẢN QUÊ HƯƠNG 🔥"
                 )
 
@@ -28,10 +28,10 @@ app.mount(
 app.mount(
     "/uploads",StaticFiles(directory="app/static/uploads"),name="uploads")
 # API routers
-app.include_router(auth.router, prefix="/api")
+# app.include_router(auth.router, prefix="/api")
 app.include_router(products.router, prefix="/api")
-app.include_router(orders.router, prefix="/api")
-app.include_router(invoices.router, prefix="/api")
+# app.include_router(orders.router, prefix="/api")
+# app.include_router(invoices.router, prefix="/api")
 
 
 @app.get("/favicon.ico")

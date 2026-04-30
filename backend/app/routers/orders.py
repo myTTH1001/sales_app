@@ -25,6 +25,7 @@ def save_draft_order(
     # Lưu đơn hàng nháp
     order = Order(
         user_id=user["user_id"],
+        store_id=user["store_id"],
         status="draft",
         total=0)
 
@@ -163,7 +164,7 @@ def cancel_order(
 ):
 
     # 🔒 CHỈ ADMIN
-    if user.get("role") != "admin":
+    if user["role"] != "admin" and order.user_id != user["user_id"]:
         raise HTTPException(
             status_code=403,
             detail="Chỉ admin mới được hủy đơn"
@@ -225,7 +226,9 @@ def delete_order(
 # 4️⃣ LẤY DANH SÁCH ĐƠN NHÁP (GIỎ HÀNG)
 # =========================================================
 @router.get("/draft", status_code=status.HTTP_200_OK)
-def get_draft_orders(db: Session = Depends(get_db)):
+def get_draft_orders(
+    db: Session = Depends(get_db),
+    user = Depends(get_current_user)):
     orders = (
         db.query(Order)
         .filter(Order.status == "draft")
@@ -294,6 +297,7 @@ def delete_draft_order(
 def get_orders_manage(
     status: str = Query(...),
     db: Session = Depends(get_db),
+    user = Depends(get_current_user),
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1),
     date_from: Optional[date] = None,
@@ -352,7 +356,8 @@ def get_orders_manage(
 @router.get("/{order_id}", status_code=status.HTTP_200_OK)
 def get_order_detail(
     order_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user = Depends(get_current_user)
 ):
     order = (
         db.query(Order)
