@@ -1,7 +1,3 @@
-from pydantic import BaseModel
-from decimal import Decimal
-
-
 from pydantic import BaseModel, Field, field_validator
 from decimal import Decimal
 from typing import Optional, List

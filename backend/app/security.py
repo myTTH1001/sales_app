@@ -92,57 +92,47 @@ def is_token_blacklisted(jti: str) -> bool:
 # ========================
 # CURRENT USER
 # ========================
-def get_current_user(token: str = Depends(oauth2_scheme)):
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
 
-        # Check type
         if payload.get("type") != "access":
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid token type",
-                headers={"WWW-Authenticate": "Bearer"}
-            )
+            raise HTTPException(401, "Invalid token type")
 
-        # Validate payload
         user_id = payload.get("user_id")
-        username = payload.get("sub")
+        store_id = payload.get("store_id")
         jti = payload.get("jti")
 
-        if not user_id or not username or not jti:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid token payload",
-                headers={"WWW-Authenticate": "Bearer"}
-            )
-        if is_token_blacklisted(jti):
-            raise HTTPException(
-                status_code=401,
-                detail="Token revoked",
-                headers={"WWW-Authenticate": "Bearer"}
-            )
-        # TODO: check DB thật
-        # user = db.query(User).filter(User.id == user_id).first()
-        # if not user:
-        #     raise HTTPException(401, "User not found")
+        if not user_id or not store_id or not jti:
+            raise HTTPException(401, "Invalid token")
 
-        return payload
+        if is_token_blacklisted(jti):
+            raise HTTPException(401, "Token revoked")
+
+        user = db.query(models.User).filter(models.User.id == user_id).first()
+
+        if not user:
+            raise HTTPException(401, "User not found")
+
+        if not user.is_active:
+            raise HTTPException(403, "User bị khóa")
+
+        if user.store_id != store_id:
+            raise HTTPException(403, "Sai store")
+
+        return {
+            "user_id": user.id,
+            "store_id": user.store_id
+        }
 
     except ExpiredSignatureError:
-        raise HTTPException(
-            status_code=401,
-            detail="Token expired",
-            headers={"WWW-Authenticate": "Bearer"}
-        )
+        raise HTTPException(401, "Token expired")
 
     except JWTError:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"}
-        )
-
-
+        raise HTTPException(401, "Invalid token")
 # ========================
 # RBAC
 # ========================
@@ -151,28 +141,27 @@ def require_permission(permission_name: str):
         user=Depends(get_current_user),
         db: Session = Depends(get_db)
     ):
-        # load role theo store
-        user_roles = db.query(models.UserRole).filter(
-            models.UserRole.user_id == user.id,
-            models.UserRole.store_id == user.store_id
-        ).all()
+        permission = db.query(models.Permission).join(
+            models.RolePermission,
+            models.Permission.id == models.RolePermission.permission_id
+        ).join(
+            models.Role,
+            models.Role.id == models.RolePermission.role_id
+        ).join(
+            models.UserRole,
+            models.UserRole.role_id == models.Role.id
+        ).filter(
+            models.UserRole.user_id == user["user_id"],
+            models.UserRole.store_id == user["store_id"],
+            models.Permission.name == permission_name
+        ).first()
 
-        if not user_roles:
-            raise HTTPException(403, "Không có quyền (no role)")
-
-        # lấy tất cả permission
-        permissions = []
-        for ur in user_roles:
-            permissions.extend([p.name for p in ur.role.permissions])
-
-        if permission_name not in permissions:
-            raise HTTPException(403, "Không có quyền")
+        if not permission:
+            raise HTTPException(403, f"Thiếu quyền: {permission_name}")
 
         return user
 
     return checker
-
-
 # ========================
 # REFRESH TOKEN
 # ========================
@@ -194,8 +183,8 @@ def refresh_access_token(refresh_token: str):
         new_payload = {
             "user_id": payload["user_id"],
             "sub": payload["sub"],
-            "role": payload.get("role"),
-            "store_id": payload.get("store_id")
+            "store_id": payload.get("store_id"),
+            "type": "access"
         }
 
         return {

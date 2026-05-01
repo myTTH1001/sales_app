@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Product
-from app.security import get_current_user
-from app.schemas.product import ProductCreate
+from app.security import get_current_user, require_permission
+from app.schemas.product import ProductCreate, ProductResponse, ProductFilter, ProductListResponse, ProductUpdate
+from app.services import product_service
 import os, uuid
 
 router = APIRouter(
@@ -15,14 +16,30 @@ router = APIRouter(
 
 UPLOAD_DIR = "app/static/uploads"
 
-@router.get("/")
-def get_products(
+@router.get("/", response_model=ProductListResponse)
+def list_products(
+    filters: ProductFilter = Depends(),
     db: Session = Depends(get_db),
-    user = Depends(get_current_user)
-
+    user = Depends(require_permission("product:view"))
 ):
-    return db.query(Product).all()
+    return product_service.get_products(
+        db=db,
+        store_id=user.store_id,
+        filters=filters
+    )
 
+
+@router.get("/{product_id}", response_model=ProductResponse)
+def get_product_api(
+    product_id: int,
+    db: Session = Depends(get_db),
+    user = Depends(require_permission("product:view"))
+):
+    return product_service.get_product(
+        db=db,
+        product_id=product_id,
+        store_id=user.store_id
+    )
 
 
 @router.post("/upload-image")
@@ -42,29 +59,40 @@ def upload_product_image(
         "image": f"/uploads/{filename}"
     }
 
-
-@router.post("/")
+@router.post("/", response_model=ProductResponse)
 def create_product(
-    product: ProductCreate,
+    data: ProductCreate,
     db: Session = Depends(get_db),
-    # admin=Depends(require_admin)
+    user = Depends(require_permission("product:create"))
 ):
-    db_product = Product(**product.dict())
-    db.add(db_product)
-    db.commit()
-    db.refresh(db_product)
-    return db_product
+    return product_service.create_product(
+        db=db,
+        data=data,
+        store_id=user.store_id
+    )
 
+@router.put("/{product_id}", response_model=ProductResponse)
+def update_product_api(
+    product_id: int,
+    data: ProductUpdate,
+    db: Session = Depends(get_db),
+    user = Depends(require_permission("product:update"))
+):
+    return product_service.update_product(
+        db=db,
+        product_id=product_id,
+        data=data,
+        store_id=user.store_id
+    )
 
 @router.delete("/{product_id}")
-def delete_product(
+def delete_product_api(
     product_id: int,
     db: Session = Depends(get_db),
-    # admin=Depends(require_admin)
+    user = Depends(require_permission("product:delete"))
 ):
-    product = db.get(Product, product_id)
-    if not product:
-        raise HTTPException(status_code=404, detail="Not found")
-    db.delete(product)
-    db.commit()
-    return {"message": "Deleted"}
+    return product_service.delete_product(
+        db=db,
+        product_id=product_id,
+        store_id=user.store_id
+    )

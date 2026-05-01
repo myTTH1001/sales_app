@@ -1,73 +1,86 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Role, Permission
+from app import models
 from app.security import get_current_user
 
 router = APIRouter(prefix="/roles", tags=["Roles"])
 
-@router.get("/")
-def get_roles(db: Session = Depends(get_db)):
-    roles = db.query(Role).all()
 
-    return [
-        {
-            "id": r.id,
-            "name": r.name,
-            "permissions": [p.name for p in r.permissions]
-        }
-        for r in roles
-    ]
-
+# =========================
+# CREATE ROLE
+# =========================
 @router.post("/")
-def create_role(
-    payload: dict,
-    db: Session = Depends(get_db),
-    user=Depends(get_current_user)
-):
-    if user["role_id"] != 1:
-        raise HTTPException(403, "Không có quyền")
+def create_role(name: str, db: Session = Depends(get_db)):
+    exists = db.query(models.Role).filter(models.Role.name == name).first()
+    if exists:
+        raise HTTPException(400, "Role đã tồn tại")
 
-    name = payload.get("name")
-
-    role = Role(name=name)
+    role = models.Role(name=name)
     db.add(role)
     db.commit()
+    db.refresh(role)
 
-    return {"message": "Tạo role thành công"}
+    return role
 
 
+# =========================
+# LIST ROLES
+# =========================
+@router.get("/")
+def get_roles(db: Session = Depends(get_db)):
+    return db.query(models.Role).all()
+
+
+# =========================
+# ADD PERMISSION TO ROLE
+# =========================
 @router.post("/{role_id}/permissions")
-def assign_permissions(
-    role_id: int,
-    payload: dict,
-    db: Session = Depends(get_db),
-    user=Depends(get_current_user)
-):
-    if user["role_id"] != 1:
-        raise HTTPException(403, "Không có quyền")
-
-    permission_ids = payload.get("permission_ids", [])
-
-    role = db.query(Role).filter(Role.id == role_id).first()
-
+def add_permission(role_id: int, permission_name: str, db: Session = Depends(get_db)):
+    role = db.query(models.Role).get(role_id)
     if not role:
         raise HTTPException(404, "Role không tồn tại")
 
-    permissions = db.query(Permission).filter(
-        Permission.id.in_(permission_ids)
-    ).all()
+    permission = db.query(models.Permission).filter_by(name=permission_name).first()
 
-    role.permissions = permissions
+    if not permission:
+        permission = models.Permission(name=permission_name)
+        db.add(permission)
+        db.commit()
+        db.refresh(permission)
+
+    role.permissions.append(permission)
     db.commit()
 
-    return {"message": "Gán quyền thành công"}
+    return {"msg": "Đã thêm permission"}
 
-@router.get("/permissions")
-def get_permissions(db: Session = Depends(get_db)):
-    permissions = db.query(Permission).all()
 
-    return [
-        {"id": p.id, "name": p.name}
-        for p in permissions
-    ]
+# =========================
+# ASSIGN ROLE TO USER (THEO STORE)
+# =========================
+@router.post("/assign")
+def assign_role(
+    user_id: int,
+    role_id: int,
+    store_id: int,
+    db: Session = Depends(get_db)
+):
+    exists = db.query(models.UserRole).filter_by(
+        user_id=user_id,
+        role_id=role_id,
+        store_id=store_id
+    ).first()
+
+    if exists:
+        raise HTTPException(400, "User đã có role này")
+
+    user_role = models.UserRole(
+        user_id=user_id,
+        role_id=role_id,
+        store_id=store_id
+    )
+
+    db.add(user_role)
+    db.commit()
+
+    return {"msg": "Gán role thành công"}
