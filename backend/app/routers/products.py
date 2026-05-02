@@ -1,98 +1,180 @@
-from fastapi import APIRouter, Depends, HTTPException,  UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from typing import List, Optional
+from datetime import datetime, timezone
 
 from app.database import get_db
-from app.models import Product
-from app.security import get_current_user, require_permission
-from app.schemas.product import ProductCreate, ProductResponse, ProductFilter, ProductListResponse, ProductUpdate
-from app.services import product_service
-import os, uuid
+from app import models
+from app.security import require_permission
 
-router = APIRouter(
-    prefix="/products",
-    tags=["Products"]
+from app.schemas.product import (
+    ProductCreate,
+    ProductUpdate,
+    ProductResponse,
+    ProductFilter
 )
 
-
-UPLOAD_DIR = "app/static/uploads"
-
-@router.get("/", response_model=ProductListResponse)
-def list_products(
-    filters: ProductFilter = Depends(),
-    db: Session = Depends(get_db),
-    user = Depends(require_permission("product:view"))
-):
-    return product_service.get_products(
-        db=db,
-        store_id=user.store_id,
-        filters=filters
-    )
+router = APIRouter(prefix="/products", tags=["Products"])
 
 
-@router.get("/{product_id}", response_model=ProductResponse)
-def get_product_api(
-    product_id: int,
-    db: Session = Depends(get_db),
-    user = Depends(require_permission("product:view"))
-):
-    return product_service.get_product(
-        db=db,
-        product_id=product_id,
-        store_id=user.store_id
-    )
-
-
-@router.post("/upload-image")
-def upload_product_image(
-    file: UploadFile = File(...),
-    # admin=Depends(require_admin)
-):
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-    filename = f"{uuid.uuid4()}_{file.filename}"
-    path = os.path.join(UPLOAD_DIR, filename)
-
-    with open(path, "wb") as f:
-        f.write(file.file.read())
-
-    return {
-        "image": f"/uploads/{filename}"
-    }
-
-@router.post("/", response_model=ProductResponse)
+# =========================================================
+# CREATE PRODUCT
+# =========================================================
+@router.post(
+    "",
+    response_model=ProductResponse
+)
 def create_product(
     data: ProductCreate,
-    db: Session = Depends(get_db),
-    user = Depends(require_permission("product:create"))
+    user=Depends(require_permission("product:create")),
+    db: Session = Depends(get_db)
 ):
-    return product_service.create_product(
-        db=db,
-        data=data,
-        store_id=user.store_id
+    # check trùng tên trong store
+    exists = db.query(models.Product).filter(
+        models.Product.name == data.name,
+        models.Product.store_id == user["store_id"]
+    ).first()
+
+    if exists:
+        raise HTTPException(400, "Sản phẩm đã tồn tại")
+
+    product = models.Product(
+        name=data.name,
+        price=data.price,
+        unit=data.unit,
+        image=data.image,
+        store_id=user["store_id"]
     )
 
-@router.put("/{product_id}", response_model=ProductResponse)
-def update_product_api(
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+
+    return product
+
+
+# =========================================================
+# GET LIST (PAGINATION + SEARCH)
+# =========================================================
+@router.get(
+    "",
+    response_model=List[ProductResponse]
+)
+def get_products(
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("product:view")),
+    search: Optional[str] = Query(None, description="Tìm theo tên"),
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0)
+):
+    query = db.query(models.Product).filter(
+        models.Product.store_id == user["store_id"]
+    )
+
+    # 🔍 search
+    if search:
+        query = query.filter(models.Product.name.ilike(f"%{search}%"))
+
+    # 💰 filter price
+    if min_price is not None:
+        query = query.filter(models.Product.price >= min_price)
+
+    if max_price is not None:
+        query = query.filter(models.Product.price <= max_price)
+
+    # 📄 pagination
+    products = query.order_by(models.Product.created_at.desc()) \
+                    .offset(offset) \
+                    .limit(limit) \
+                    .all()
+
+    return products
+
+
+# =========================================================
+# GET DETAIL
+# =========================================================
+@router.get(
+    "/{product_id}",
+    response_model=ProductResponse
+)
+def get_product(
+    product_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("product:view"))
+):
+    product = db.query(models.Product).filter(
+        models.Product.id == product_id,
+        models.Product.store_id == user["store_id"]
+    ).first()
+
+    if not product:
+        raise HTTPException(404, "Không tìm thấy sản phẩm")
+
+    return product
+
+
+# =========================================================
+# UPDATE
+# =========================================================
+@router.put(
+    "/{product_id}",
+    response_model=ProductResponse
+)
+def update_product(
     product_id: int,
     data: ProductUpdate,
     db: Session = Depends(get_db),
-    user = Depends(require_permission("product:update"))
+    user=Depends(require_permission("product:update"))
 ):
-    return product_service.update_product(
-        db=db,
-        product_id=product_id,
-        data=data,
-        store_id=user.store_id
-    )
+    product = db.query(models.Product).filter(
+        models.Product.id == product_id,
+        models.Product.store_id == user["store_id"]
+    ).first()
 
+    if not product:
+        raise HTTPException(404, "Không tìm thấy sản phẩm")
+
+    # check trùng tên nếu đổi
+    if data.name and data.name != product.name:
+        exists = db.query(models.Product).filter(
+            models.Product.name == data.name,
+            models.Product.store_id == user["store_id"]
+        ).first()
+
+        if exists:
+            raise HTTPException(400, "Tên sản phẩm đã tồn tại")
+
+    for field, value in data.dict(exclude_unset=True).items():
+        setattr(product, field, value)
+
+    db.commit()
+    db.refresh(product)
+
+    return product
+
+
+# =========================================================
+# DELETE (SOFT DELETE)
+# =========================================================
 @router.delete("/{product_id}")
-def delete_product_api(
+def delete_product(
     product_id: int,
     db: Session = Depends(get_db),
-    user = Depends(require_permission("product:delete"))
+    user=Depends(require_permission("product:delete"))
 ):
-    return product_service.delete_product(
-        db=db,
-        product_id=product_id,
-        store_id=user.store_id
-    )
+    product = db.query(models.Product).filter(
+        models.Product.id == product_id,
+        models.Product.store_id == user["store_id"]
+    ).first()
+
+    if not product:
+        raise HTTPException(404, "Không tìm thấy sản phẩm")
+
+    product.deleted_at = datetime.now(timezone.utc)
+
+    db.commit()
+
+    return {"msg": "Đã xoá sản phẩm"}

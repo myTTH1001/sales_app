@@ -68,27 +68,22 @@ def create_refresh_token(data: dict):
 
 
 # ========================
-# BLACKLIST (IN-MEMORY)
+# BLACKLIST (DB)
 # ========================
-blacklist = {}  # {jti: exp_timestamp}
-_last_cleanup = 0
+def blacklist_token(jti: str, exp: datetime, db: Session):
+    db.add(models.TokenBlacklist(jti=jti, exp=exp))
+    db.commit()
 
-def cleanup_blacklist():
-    global _last_cleanup
-    now = datetime.now(timezone.utc).timestamp()
-    if now - _last_cleanup < 60:
-        return
-    _last_cleanup = now
-    expired = [jti for jti, exp in blacklist.items() if exp < now]
-    for jti in expired:
-        del blacklist[jti]
-def blacklist_token(jti: str, exp: datetime):
-    blacklist[jti] = exp.timestamp()
+def is_token_blacklisted(jti: str, db: Session) -> bool:
+    return db.query(models.TokenBlacklist).filter(
+        models.TokenBlacklist.jti == jti
+    ).first() is not None
 
-
-def is_token_blacklisted(jti: str) -> bool:
-    cleanup_blacklist()
-    return jti in blacklist
+def cleanup_blacklist(db: Session):
+    db.query(models.TokenBlacklist).filter(
+        models.TokenBlacklist.exp < datetime.now(timezone.utc)
+    ).delete()
+    db.commit()
 # ========================
 # CURRENT USER
 # ========================
@@ -109,7 +104,7 @@ def get_current_user(
         if not user_id or not store_id or not jti:
             raise HTTPException(401, "Invalid token")
 
-        if is_token_blacklisted(jti):
+        if is_token_blacklisted(jti, db):
             raise HTTPException(401, "Token revoked")
 
         user = db.query(models.User).filter(models.User.id == user_id).first()
@@ -125,7 +120,9 @@ def get_current_user(
 
         return {
             "user_id": user.id,
-            "store_id": user.store_id
+            "store_id": user.store_id,
+            "jti": jti,
+            "exp": payload["exp"] 
         }
 
     except ExpiredSignatureError:
@@ -142,11 +139,11 @@ def require_permission(permission_name: str):
         db: Session = Depends(get_db)
     ):
         permission = db.query(models.Permission).join(
-            models.RolePermission,
-            models.Permission.id == models.RolePermission.permission_id
+            models.role_permissions,
+            models.Permission.id == models.role_permissions.c.permission_id
         ).join(
             models.Role,
-            models.Role.id == models.RolePermission.role_id
+            models.Role.id == models.role_permissions.c.role_id
         ).join(
             models.UserRole,
             models.UserRole.role_id == models.Role.id
@@ -165,7 +162,7 @@ def require_permission(permission_name: str):
 # ========================
 # REFRESH TOKEN
 # ========================
-def refresh_access_token(refresh_token: str):
+def refresh_access_token(refresh_token: str , db: Session):
     try:
         payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
 
@@ -174,17 +171,16 @@ def refresh_access_token(refresh_token: str):
 
         jti = payload.get("jti")
 
-        if is_token_blacklisted(jti):
+        if is_token_blacklisted(jti, db):
             raise HTTPException(401, "Token revoked")
 
         # (optional) rotate refresh token
-        blacklist_token(jti, datetime.fromtimestamp(payload["exp"], tz=timezone.utc))
+        blacklist_token(jti, datetime.fromtimestamp(payload["exp"], tz=timezone.utc), db)
 
         new_payload = {
             "user_id": payload["user_id"],
             "sub": payload["sub"],
-            "store_id": payload.get("store_id"),
-            "type": "access"
+            "store_id": payload.get("store_id")
         }
 
         return {
@@ -202,10 +198,10 @@ def refresh_access_token(refresh_token: str):
 # ========================
 # LOGOUT
 # ========================
-def logout_user(user_payload: dict):
+def logout_user(user_payload: dict, db: Session):
     jti = user_payload.get("jti")
     exp = datetime.fromtimestamp(user_payload["exp"], tz=timezone.utc)
 
-    blacklist_token(jti, exp)
+    blacklist_token(jti, exp, db)
 
     return {"msg": "Logged out"}

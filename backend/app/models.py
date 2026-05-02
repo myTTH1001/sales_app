@@ -230,44 +230,52 @@ class Invoice(Base, TimestampMixin):
 
 
 class StockMovementType(str, enum.Enum):
-    IMPORT = "IMPORT"           # nhập hàng
-    SALE = "SALE"               # bán hàng
-    RETURN = "RETURN"           # khách trả
-    ADJUST = "ADJUST"           # chỉnh kho
+    IMPORT   = "IMPORT"     # nhập hàng từ NCC
+    SALE     = "SALE"       # bán hàng (tự động)
+    RETURN   = "RETURN"     # khách trả hàng
+    ADJUST   = "ADJUST"     # chỉnh kho (kiểm kê)
+    TRANSFER = "TRANSFER"   # ✅ chuyển kho giữa các cửa hàng (nếu có nhiều cửa hàng)
 
 class StockMovement(Base, TimestampMixin):
     __tablename__ = "stock_movements"
 
-    id = Column(Integer, primary_key=True)
-
-    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), index=True, nullable=False)
-    store_id = Column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), index=True, nullable=False)
+    id           = Column(Integer, primary_key=True)
+    product_id   = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), index=True, nullable=False)
+    store_id     = Column(Integer, ForeignKey("stores.id",   ondelete="CASCADE"), index=True, nullable=False)
     order_item_id = Column(Integer, ForeignKey("order_items.id"), nullable=True)
+    quantity = Column(Integer, nullable=False)   # + nhập / - xuất
+    type     = Column(Enum(StockMovementType, name="stock_movement_type_enum"), nullable=False)
+    note     = Column(String, nullable=True)
+    status   = Column(String, default="done")
+
+    # ✅ TRANSFER: 2 bản ghi cùng transfer_ref — 1 âm (nguồn) + 1 dương (đích)
+    transfer_ref = Column(String, nullable=True, index=True)
+
     order_item = relationship("OrderItem")
-    quantity = Column(Integer, nullable=False)  
-    # +10 nhập, -2 bán
-    type = Column(Enum(StockMovementType, name="stock_movement_type_enum"), nullable=False)
-    note = Column(String, nullable=True)
-    status = Column(String, default="done")
-    product = relationship("Product", back_populates="stock_movements")
-    store = relationship("Store", back_populates="stock_movements")
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    user = relationship("User")
+    product    = relationship("Product", back_populates="stock_movements")
+    store      = relationship("Store",   back_populates="stock_movements")
+    user_id    = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    user       = relationship("User")
+
     __table_args__ = (
         CheckConstraint("quantity != 0", name="ck_quantity_not_zero"),
         Index("idx_stock_product_store_created", "product_id", "store_id", "created_at"),
         Index("idx_stock_created_at", "created_at"),
+        Index("idx_stock_transfer_ref", "transfer_ref"),    # ✅ tìm cặp transfer nhanh
+
+        # ✅ Cập nhật constraint — TRANSFER cho phép cả + lẫn -
         CheckConstraint(
-        "(type = 'IMPORT' AND quantity > 0) OR "
-        "(type = 'SALE' AND quantity < 0) OR "
-        "(type = 'RETURN' AND quantity > 0) OR "
-        "(type = 'ADJUST')",
-        name="ck_stock_type_quantity"
+            "(type = 'IMPORT'   AND quantity > 0) OR "
+            "(type = 'SALE'     AND quantity < 0) OR "
+            "(type = 'RETURN'   AND quantity > 0) OR "
+            "(type = 'ADJUST'                   ) OR "   # adjust: + hoặc - đều được
+            "(type = 'TRANSFER'                 )",      # transfer: + hoặc - đều được
+            name="ck_stock_type_quantity"
         ),
     )
 
     def __repr__(self):
-        return f"<StockMovement product={self.product_id} qty={self.quantity}>"
+        return f"<StockMovement product={self.product_id} qty={self.quantity} type={self.type}>"
 
 # =========================================================
 # 🔥 AUDIT LOG
@@ -288,3 +296,13 @@ class AuditLog(Base, TimestampMixin):
     __table_args__ = (
     Index("idx_audit_table_record", "table_name", "record_id"),
 )
+    
+# =========================================================
+# 🔥 TOKEN BLACKLIST
+# =========================================================
+class TokenBlacklist(Base):
+    __tablename__ = "token_blacklist"
+    
+    jti = Column(String, primary_key=True)
+    exp = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=func.now())

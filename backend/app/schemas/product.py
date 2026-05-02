@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from decimal import Decimal
 from typing import Optional, List
 
@@ -22,10 +22,7 @@ class ProductBase(BaseModel):
 # 🔹 CREATE
 # =========================================================
 class ProductCreate(ProductBase):
-    name: str
-    price: Decimal
-    unit: str | None = None
-    image: str | None = None
+    pass
 
 
 # =========================================================
@@ -55,8 +52,9 @@ class ProductResponse(BaseModel):
     unit: str | None
     image: str | None
 
-    class Config:
-        orm_mode = True
+    # class Config:
+    #     orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # =========================================================
@@ -74,8 +72,8 @@ class ProductFilter(BaseModel):
     search: Optional[str] = None
     min_price: Optional[Decimal] = None
     max_price: Optional[Decimal] = None
-    page: int = 1
-    limit: int = 10
+    limit: int = Field(default=10, ge=1, le=100)
+    page: int = Field(default=1, ge=1)
 
     @field_validator("page", "limit")
     @classmethod

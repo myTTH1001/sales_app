@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from datetime import datetime, timezone
 from app import models
 from app.schemas.product import (
     ProductCreate,
@@ -150,7 +151,7 @@ def delete_product(
 ):
     product = get_product(db, product_id, store_id)
 
-    product.deleted_at = func.now()
+    product.deleted_at = datetime.now(timezone.utc)
 
     db.commit()
 
