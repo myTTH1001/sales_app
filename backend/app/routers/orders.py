@@ -8,12 +8,25 @@ from app.schemas.order import (
     OrderCreate,
     OrderOut,
     OrderCancel,
-    OrderConfirm
+    OrderConfirm,
+    OrderListResponse
 )
 
 from app.services import order_service
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
+
+# =========================================================
+# LIST ORDERS (PAGINATION)
+# =========================================================
+@router.get("", response_model=OrderListResponse)
+def list_orders(
+    limit: int = 10,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("order:view"))
+):
+    return order_service.list_orders(db, user, limit, offset)
 
 
 # =========================================================

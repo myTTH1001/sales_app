@@ -48,3 +48,15 @@ class OrderCancel(BaseModel):
 
 class OrderConfirm(BaseModel):
     note: Optional[str] = None
+
+# =========================================================
+# PAGINATION
+# =========================================================
+from typing import Generic, TypeVar
+
+T = TypeVar("T")
+
+
+class OrderListResponse(BaseModel):
+    total: int
+    data: List[OrderOut]

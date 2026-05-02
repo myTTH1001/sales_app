@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from fastapi import HTTPException
 from decimal import Decimal
-
+from sqlalchemy.orm import joinedload
 from app import models
 from app.schemas.order import OrderCreate
 
@@ -96,9 +96,8 @@ def confirm_order(db: Session, user: dict, order_id: int):
 
             order = db.query(models.Order).filter(
                 models.Order.id == order_id,
-                models.Order.store_id == user["store_id"],
-                models.Order.status == models.OrderStatus.draft
-            ).first()
+                models.Order.store_id == user["store_id"]
+            ).with_for_update().first()
 
             if not order:
                 raise HTTPException(400, "Order không hợp lệ")
@@ -156,9 +155,11 @@ def cancel_order(db: Session, user: dict, order_id: int):
             if not order:
                 raise HTTPException(404, "Không tìm thấy order")
 
+            if order.status == models.OrderStatus.cancelled:
+                raise HTTPException(400, "Order đã bị huỷ")
+
             if order.status != models.OrderStatus.confirmed:
                 raise HTTPException(400, "Chỉ huỷ được order đã confirm")
-
             # 👉 hoàn kho
             for item in order.items:
                 db.add(models.StockMovement(
@@ -178,3 +179,30 @@ def cancel_order(db: Session, user: dict, order_id: int):
     except Exception:
         db.rollback()
         raise
+
+
+# =========================================================
+# LIST ORDERS (PAGINATION)
+# =========================================================
+def list_orders(
+    db: Session,
+    user: dict,
+    limit: int = 10,
+    offset: int = 0
+):
+    query = db.query(models.Order).filter(
+        models.Order.store_id == user["store_id"]
+    )
+
+    # 👉 total trước
+    total = query.count()
+
+    # 👉 lấy data + eager load items
+    orders = query.options(
+        joinedload(models.Order.items)
+    ).order_by(models.Order.id.desc()).offset(offset).limit(limit).all()
+
+    return {
+        "total": total,
+        "data": orders
+    }
