@@ -4,12 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, Form
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, Store
+from app.security import blacklist_token, blacklist_refresh_token
+from app.models import User, Store, Role, Permission, UserRole
 from app.security import (
     hash_password, verify_password,
     create_access_token, create_refresh_token,
     refresh_access_token, logout_user,
-    get_current_user
+    get_current_user, load_user_permissions,
+    get_or_create_owner_role,
 )
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -22,7 +24,7 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 def register(
     username: str = Form(...),
     password: str = Form(...),
-    store_name: str = Form(...),        # ✅ mỗi lần register = tạo store mới
+    store_name: str = Form(...),
     db: Session = Depends(get_db)
 ):
     if db.query(User).filter(User.username == username).first():
@@ -39,10 +41,21 @@ def register(
     new_user = User(
         username=username.strip(),
         password=hash_password(password),
-        store_id=store.id,              # ✅ gắn store
+        store_id=store.id,
         is_active=True
     )
     db.add(new_user)
+    db.flush()  # lấy new_user.id trước khi tạo UserRole
+
+    # Lấy hoặc tạo role "owner" (kèm seed permissions nếu chưa có)
+    owner_role = get_or_create_owner_role(db)
+
+    # Gán role owner cho user này trong store này
+    db.add(UserRole(
+        user_id=new_user.id,
+        role_id=owner_role.id,
+        store_id=store.id,
+    ))
     db.commit()
 
     return {"message": "Đăng ký thành công", "store_id": store.id}
@@ -68,13 +81,16 @@ def login(
     token_payload = {
         "user_id": user.id,
         "sub": user.username,
-        "store_id": user.store_id
+        "store_id": user.store_id,
     }
 
+    # Load permissions từ DB theo store
+    permissions = load_user_permissions(user.id, user.store_id, db)
+
     return {
-        "access_token": create_access_token(token_payload),
-        "refresh_token": create_refresh_token(token_payload), 
-        "token_type": "bearer"
+        "access_token": create_access_token(token_payload, permissions),
+        "refresh_token": create_refresh_token(token_payload),
+        "token_type": "bearer",
     }
 
 
@@ -86,7 +102,7 @@ def refresh(
     refresh_token: str = Form(...),
     db: Session = Depends(get_db)
 ):
-    return refresh_access_token(refresh_token, db) 
+    return refresh_access_token(refresh_token, db)   
 
 
 # =========================
@@ -94,14 +110,18 @@ def refresh(
 # =========================
 @router.post("/logout", status_code=204)
 def logout(
-    current_user=Depends(get_current_user),     
+    refresh_token: str = Form(...),          # bắt buộc gửi lên
+    current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     from datetime import datetime, timezone
-    from app.security import blacklist_token
 
+    # 1. Blacklist access token (lấy từ Authorization header qua get_current_user)
     exp = datetime.fromtimestamp(current_user["exp"], tz=timezone.utc)
     blacklist_token(current_user["jti"], exp, db)
+
+    # 2. Blacklist refresh token
+    blacklist_refresh_token(refresh_token, db)
 
 
 @router.post("/logout-token", status_code=204)
@@ -109,10 +129,5 @@ def logout_with_token(
     token: str = Form(...),
     db: Session = Depends(get_db)
 ):
-    from jose import jwt
-    from app.security import SECRET_KEY, ALGORITHM
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        logout_user(payload, db)
-    except Exception:
-        raise HTTPException(401, "Token không hợp lệ")
+    # Endpoint này nhận refresh token (dùng cho client không giữ access token)
+    blacklist_refresh_token(token, db)

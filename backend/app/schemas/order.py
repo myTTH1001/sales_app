@@ -9,11 +9,12 @@ from datetime import datetime
 # =========================================================
 class OrderItemCreate(BaseModel):
     product_id: int
-    quantity: int = Field(..., gt=0)  # 🔥 bắt buộc > 0
+    quantity: int = Field(..., gt=0)
 
 
 class OrderCreate(BaseModel):
-    items: List[OrderItemCreate]
+    # ✅ [SỬA] min_length=1 — không cho phép items rỗng []
+    items: List[OrderItemCreate] = Field(..., min_length=1)
 
 
 # =========================================================
@@ -48,15 +49,13 @@ class OrderCancel(BaseModel):
 
 class OrderConfirm(BaseModel):
     note: Optional[str] = None
+    payment_method: str = Field(..., pattern="^(cash|card|transfer)$")
 
 # =========================================================
 # PAGINATION
 # =========================================================
-from typing import Generic, TypeVar
-
-T = TypeVar("T")
-
-
 class OrderListResponse(BaseModel):
     total: int
     data: List[OrderOut]
+
+    # ✅ [SỬA] bỏ TypeVar T thừa (định nghĩa Generic nhưng không dùng)

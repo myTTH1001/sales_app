@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -16,13 +16,15 @@ from app.services import order_service
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
+
 # =========================================================
 # LIST ORDERS (PAGINATION)
 # =========================================================
 @router.get("", response_model=OrderListResponse)
 def list_orders(
-    limit: int = 10,
-    offset: int = 0,
+    # ✅ [SỬA] giới hạn limit/offset tránh client query quá lớn
+    limit: int = Query(default=10, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user=Depends(require_permission("order:view"))
 ):
@@ -63,7 +65,9 @@ def confirm_order(
     db: Session = Depends(get_db),
     user=Depends(require_permission("order:confirm"))
 ):
-    return order_service.confirm_order(db, user, order_id)
+    # ✅ [SỬA] truyền note vào service thay vì bỏ qua
+    return order_service.confirm_order(db, user, order_id, 
+        payment_method=data.payment_method, note=data.note)
 
 
 # =========================================================
@@ -76,4 +80,5 @@ def cancel_order(
     db: Session = Depends(get_db),
     user=Depends(require_permission("order:cancel"))
 ):
-    return order_service.cancel_order(db, user, order_id)
+    # ✅ [SỬA] truyền reason vào service thay vì bỏ qua
+    return order_service.cancel_order(db, user, order_id, reason=data.reason)

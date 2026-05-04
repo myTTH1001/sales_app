@@ -59,8 +59,87 @@ def create_token(data: dict, expires_delta: timedelta, token_type: str):
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def create_access_token(data: dict):
-    return create_token(data, timedelta(minutes=ACCESS_EXPIRE_MINUTES), "access")
+def create_access_token(data: dict, permissions: list[str] | None = None):
+    return create_token({**data, "permissions": permissions or []},
+                        timedelta(minutes=ACCESS_EXPIRE_MINUTES), "access")
+
+
+# ========================
+# PERMISSIONS LOADER
+# ========================
+def load_user_permissions(user_id: int, store_id: int, db: Session) -> list[str]:
+    """
+    Load danh sách permissions của user trong một store cụ thể.
+    Traverse: UserRole → Role → role_permissions → Permission
+    """
+    from sqlalchemy.orm import joinedload
+
+    user_roles = (
+        db.query(models.UserRole)
+        .options(
+            joinedload(models.UserRole.role)
+            .joinedload(models.Role.permissions)
+        )
+        .filter(
+            models.UserRole.user_id == user_id,
+            models.UserRole.store_id == store_id,
+        )
+        .all()
+    )
+
+    permissions: set[str] = set()
+    for ur in user_roles:
+        for perm in ur.role.permissions:
+            permissions.add(perm.name)
+
+    return sorted(permissions)
+
+
+def get_or_create_owner_role(db: Session) -> models.Role:
+    """
+    Lấy role 'owner' từ DB, tạo mới nếu chưa có.
+    Đồng thời seed toàn bộ permissions của owner vào bảng permissions
+    và gắn vào role nếu chưa có.
+
+    Hàm này idempotent — gọi nhiều lần không gây duplicate.
+    """
+    from app.permissions import ROLE_TEMPLATES, all_permissions
+
+    # 1. Seed toàn bộ permissions vào bảng (upsert bằng get-or-create)
+    all_perm_names = all_permissions()
+    perm_map: dict[str, models.Permission] = {}
+
+    existing_perms = db.query(models.Permission).filter(
+        models.Permission.name.in_(all_perm_names)
+    ).all()
+    perm_map = {p.name: p for p in existing_perms}
+
+    for name in all_perm_names:
+        if name not in perm_map:
+            new_perm = models.Permission(name=name)
+            db.add(new_perm)
+            perm_map[name] = new_perm
+
+    db.flush()  # đảm bảo các Permission mới có id
+
+    # 2. Lấy hoặc tạo role "owner"
+    owner_role = db.query(models.Role).filter(models.Role.name == "owner").first()
+    if not owner_role:
+        owner_role = models.Role(name="owner")
+        db.add(owner_role)
+        db.flush()
+
+    # 3. Gắn permissions còn thiếu vào role owner
+    owner_perm_names = set(ROLE_TEMPLATES.get("owner", []))
+    existing_role_perm_names = {p.name for p in owner_role.permissions}
+    missing = owner_perm_names - existing_role_perm_names
+
+    for name in missing:
+        if name in perm_map:
+            owner_role.permissions.append(perm_map[name])
+
+    db.flush()
+    return owner_role
 
 
 def create_refresh_token(data: dict):
@@ -100,6 +179,7 @@ def get_current_user(
         user_id = payload.get("user_id")
         store_id = payload.get("store_id")
         jti = payload.get("jti")
+        permissions = payload.get("permissions", [])
 
         if not user_id or not store_id or not jti:
             raise HTTPException(401, "Invalid token")
@@ -122,7 +202,8 @@ def get_current_user(
             "user_id": user.id,
             "store_id": user.store_id,
             "jti": jti,
-            "exp": payload["exp"] 
+            "exp": payload["exp"],
+            "permissions": permissions, 
         }
 
     except ExpiredSignatureError:
@@ -135,29 +216,12 @@ def get_current_user(
 # ========================
 def require_permission(permission_name: str):
     def checker(
-        user=Depends(get_current_user),
-        db: Session = Depends(get_db)
+        user=Depends(get_current_user)
+        # db: Session = Depends(get_db)
     ):
-        permission = db.query(models.Permission).join(
-            models.role_permissions,
-            models.Permission.id == models.role_permissions.c.permission_id
-        ).join(
-            models.Role,
-            models.Role.id == models.role_permissions.c.role_id
-        ).join(
-            models.UserRole,
-            models.UserRole.role_id == models.Role.id
-        ).filter(
-            models.UserRole.user_id == user["user_id"],
-            models.UserRole.store_id == user["store_id"],
-            models.Permission.name == permission_name
-        ).first()
-
-        if not permission:
+        if permission_name not in user["permissions"]:
             raise HTTPException(403, f"Thiếu quyền: {permission_name}")
-
         return user
-
     return checker
 # ========================
 # REFRESH TOKEN
@@ -174,18 +238,33 @@ def refresh_access_token(refresh_token: str , db: Session):
         if is_token_blacklisted(jti, db):
             raise HTTPException(401, "Token revoked")
 
-        # (optional) rotate refresh token
+        # Kiểm tra lại trạng thái user (có thể bị khóa sau khi đăng nhập)
+        user_id  = payload.get("user_id")
+        store_id = payload.get("store_id")
+
+        user = db.query(models.User).filter(models.User.id == user_id).first()
+        if not user:
+            raise HTTPException(401, "User không tồn tại")
+        if not user.is_active:
+            raise HTTPException(403, "Tài khoản đã bị khóa")
+        if user.store_id != store_id:
+            raise HTTPException(403, "Sai store")
+
+        # Rotate refresh token — blacklist token cũ
         blacklist_token(jti, datetime.fromtimestamp(payload["exp"], tz=timezone.utc), db)
 
         new_payload = {
-            "user_id": payload["user_id"],
-            "sub": payload["sub"],
-            "store_id": payload.get("store_id")
+            "user_id": user.id,
+            "sub": user.username,
+            "store_id": user.store_id,
         }
 
+        # Load lại permissions từ DB — đảm bảo luôn up-to-date
+        permissions = load_user_permissions(user.id, user.store_id, db)
+
         return {
-            "access_token": create_access_token(new_payload),
-            "refresh_token": create_refresh_token(new_payload)
+            "access_token": create_access_token(new_payload, permissions),
+            "refresh_token": create_refresh_token(new_payload),
         }
 
     except ExpiredSignatureError:
@@ -201,7 +280,28 @@ def refresh_access_token(refresh_token: str , db: Session):
 def logout_user(user_payload: dict, db: Session):
     jti = user_payload.get("jti")
     exp = datetime.fromtimestamp(user_payload["exp"], tz=timezone.utc)
-
     blacklist_token(jti, exp, db)
-
     return {"msg": "Logged out"}
+
+
+def blacklist_refresh_token(refresh_token: str, db: Session):
+    """
+    Decode và blacklist một refresh token.
+    Raise HTTPException nếu token không hợp lệ hoặc sai type.
+    Token đã hết hạn được bỏ qua (không cần blacklist).
+    """
+    try:
+        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+    except ExpiredSignatureError:
+        return  # đã hết hạn → không cần blacklist, bỏ qua
+    except JWTError:
+        raise HTTPException(400, "Refresh token không hợp lệ")
+
+    if payload.get("type") != "refresh":
+        raise HTTPException(400, "Token không phải refresh token")
+
+    jti = payload.get("jti")
+    exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+
+    if not is_token_blacklisted(jti, db):
+        blacklist_token(jti, exp, db)

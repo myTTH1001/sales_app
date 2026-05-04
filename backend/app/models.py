@@ -218,9 +218,12 @@ class Invoice(Base, TimestampMixin):
     # 🔥 Multi-store
     store_id = Column(Integer, ForeignKey("stores.id"), nullable=False)
     total = Column(Numeric(12, 2), nullable=False)
+    payment_method = Column(String(20), nullable=False)
+    cashier_id     = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    paid_at        = Column(DateTime(timezone=True), nullable=True)
+    status = Column(String, default="paid")
     order = relationship("Order", back_populates="invoice")
     store = relationship("Store", back_populates="invoices")
-    status = Column(String, default="paid")
 
     __table_args__ = (
         Index("idx_invoice_store", "store_id"),
