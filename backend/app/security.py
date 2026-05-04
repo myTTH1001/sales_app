@@ -95,24 +95,20 @@ def load_user_permissions(user_id: int, store_id: int, db: Session) -> list[str]
     return sorted(permissions)
 
 
-def get_or_create_owner_role(db: Session) -> models.Role:
+def _seed_all_permissions(db: Session) -> dict[str, models.Permission]:
     """
-    Lấy role 'owner' từ DB, tạo mới nếu chưa có.
-    Đồng thời seed toàn bộ permissions của owner vào bảng permissions
-    và gắn vào role nếu chưa có.
-
-    Hàm này idempotent — gọi nhiều lần không gây duplicate.
+    Đảm bảo toàn bộ permissions trong PERMISSIONS đã có trong bảng DB.
+    Trả về perm_map {name: Permission} để caller dùng tiếp — không commit.
+    Idempotent: gọi nhiều lần không tạo duplicate.
     """
-    from app.permissions import ROLE_TEMPLATES, all_permissions
+    from app.permissions import all_permissions
 
-    # 1. Seed toàn bộ permissions vào bảng (upsert bằng get-or-create)
     all_perm_names = all_permissions()
-    perm_map: dict[str, models.Permission] = {}
 
-    existing_perms = db.query(models.Permission).filter(
+    existing = db.query(models.Permission).filter(
         models.Permission.name.in_(all_perm_names)
     ).all()
-    perm_map = {p.name: p for p in existing_perms}
+    perm_map: dict[str, models.Permission] = {p.name: p for p in existing}
 
     for name in all_perm_names:
         if name not in perm_map:
@@ -120,26 +116,48 @@ def get_or_create_owner_role(db: Session) -> models.Role:
             db.add(new_perm)
             perm_map[name] = new_perm
 
-    db.flush()  # đảm bảo các Permission mới có id
+    db.flush()  # đảm bảo các Permission mới có id trước khi caller dùng
+    return perm_map
 
-    # 2. Lấy hoặc tạo role "owner"
-    owner_role = db.query(models.Role).filter(models.Role.name == "owner").first()
-    if not owner_role:
-        owner_role = models.Role(name="owner")
-        db.add(owner_role)
+
+def get_or_create_role(role_name: str, db: Session) -> models.Role:
+    """
+    Lấy role theo tên từ DB, tạo mới nếu chưa có.
+    Đồng thời seed permissions theo ROLE_TEMPLATES[role_name] vào role.
+    Idempotent — gọi nhiều lần không gây duplicate.
+    Không tự commit — caller chịu trách nhiệm commit/rollback.
+    """
+    from app.permissions import ROLE_TEMPLATES
+
+    if role_name not in ROLE_TEMPLATES:
+        raise ValueError(f"Role '{role_name}' không có trong ROLE_TEMPLATES")
+
+    # 1. Seed bảng permissions (đảm bảo tất cả permissions tồn tại trong DB)
+    perm_map = _seed_all_permissions(db)
+
+    # 2. Lấy hoặc tạo role
+    role = db.query(models.Role).filter(models.Role.name == role_name).first()
+    if not role:
+        role = models.Role(name=role_name)
+        db.add(role)
         db.flush()
 
-    # 3. Gắn permissions còn thiếu vào role owner
-    owner_perm_names = set(ROLE_TEMPLATES.get("owner", []))
-    existing_role_perm_names = {p.name for p in owner_role.permissions}
-    missing = owner_perm_names - existing_role_perm_names
+    # 3. Gắn permissions còn thiếu theo template (không xóa permissions đã có thêm thủ công)
+    template_perm_names = set(ROLE_TEMPLATES[role_name])
+    existing_perm_names = {p.name for p in role.permissions}
+    missing = template_perm_names - existing_perm_names
 
     for name in missing:
         if name in perm_map:
-            owner_role.permissions.append(perm_map[name])
+            role.permissions.append(perm_map[name])
 
     db.flush()
-    return owner_role
+    return role
+
+
+def get_or_create_owner_role(db: Session) -> models.Role:
+    """Giữ lại để không break auth.py — delegate sang get_or_create_role."""
+    return get_or_create_role("owner", db)
 
 
 def create_refresh_token(data: dict):

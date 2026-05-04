@@ -1,4 +1,4 @@
-# roles.py
+# roles.py — bản sửa đầy đủ
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -6,9 +6,14 @@ from pydantic import BaseModel, field_validator
 from typing import List
 from app.database import get_db
 from app import models
-from app.security import require_permission
+from app.security import require_permission, get_or_create_role
+from app.permissions import ROLE_TEMPLATES, all_permissions
 
 router = APIRouter(prefix="/roles", tags=["Roles"])
+
+# whitelist cố định — tính 1 lần khi module load
+_VALID_ROLE_NAMES       = set(ROLE_TEMPLATES.keys())          # owner, manager, staff, cashier
+_VALID_PERMISSION_NAMES = set(all_permissions())
 
 
 # =========================
@@ -43,6 +48,8 @@ class AssignRolePayload(BaseModel):
 
 # =========================
 # CREATE ROLE
+# Tạo role theo ROLE_TEMPLATES và seed permissions tương ứng ngay lập tức.
+# Idempotent: nếu role đã tồn tại chỉ sync permissions còn thiếu rồi trả về.
 # =========================
 @router.post("/", response_model=RoleOut, status_code=201)
 def create_role(
@@ -50,25 +57,48 @@ def create_role(
     db: Session = Depends(get_db),
     current_user=Depends(require_permission("manage_roles"))
 ):
-    if db.query(models.Role).filter(models.Role.name == payload.name).first():
-        raise HTTPException(400, "Role đã tồn tại")
+    if payload.name not in _VALID_ROLE_NAMES:
+        raise HTTPException(
+            400,
+            f"Role không hợp lệ. Các role được phép: {sorted(_VALID_ROLE_NAMES)}"
+        )
 
-    role = models.Role(name=payload.name)
-    db.add(role)
+    # get_or_create_role xử lý cả tạo mới lẫn đã tồn tại,
+    # đồng thời seed đúng permissions theo ROLE_TEMPLATES — không tạo role rỗng.
+    role = get_or_create_role(payload.name, db)
     db.commit()
     db.refresh(role)
-    return RoleOut(id=role.id, name=role.name, permissions=[])
+
+    return RoleOut(
+        id=role.id,
+        name=role.name,
+        permissions=sorted(p.name for p in role.permissions),
+    )
 
 
 # =========================
 # LIST ROLES
+# ✅ Chỉ trả về role đang được dùng trong store hiện tại
 # =========================
 @router.get("/", response_model=List[RoleOut])
 def get_roles(
     db: Session = Depends(get_db),
     current_user=Depends(require_permission("manage_roles"))
 ):
-    roles = db.query(models.Role).all()
+    # Lấy role_id đang được assign trong store này
+    store_role_ids = (
+        db.query(models.UserRole.role_id)
+        .filter(models.UserRole.store_id == current_user["store_id"])
+        .distinct()
+        .subquery()
+    )
+
+    roles = (
+        db.query(models.Role)
+        .filter(models.Role.id.in_(store_role_ids))
+        .all()
+    )
+
     return [
         RoleOut(id=r.id, name=r.name, permissions=[p.name for p in r.permissions])
         for r in roles
@@ -80,6 +110,7 @@ def get_roles(
 
 # =========================
 # ASSIGN ROLE TO USER
+# ✅ Kiểm tra user thuộc cùng store trước khi assign
 # =========================
 @router.post("/assignments", status_code=201)
 def assign_role(
@@ -90,8 +121,15 @@ def assign_role(
     if payload.store_id != current_user["store_id"]:
         raise HTTPException(403, "Không thể gán role cho store khác")
 
-    if not db.get(models.User, payload.user_id):
-        raise HTTPException(404, "User không tồn tại")
+    # ✅ Kiểm tra user tồn tại VÀ thuộc cùng store — tránh cross-tenant
+    user = db.query(models.User).filter(
+        models.User.id == payload.user_id,
+        models.User.store_id == current_user["store_id"],
+        models.User.deleted_at.is_(None)
+    ).first()
+    if not user:
+        raise HTTPException(404, "User không tồn tại trong store này")
+    
     if not db.get(models.Role, payload.role_id):
         raise HTTPException(404, "Role không tồn tại")
 
@@ -114,6 +152,7 @@ def assign_role(
 
 # =========================
 # REMOVE ROLE FROM USER
+# ✅ Chặn xóa role cuối cùng của user
 # =========================
 @router.delete("/assignments/{user_id}/{role_id}", status_code=204)
 def remove_role(
@@ -129,6 +168,14 @@ def remove_role(
     ).first()
     if not user_role:
         raise HTTPException(404, "Không tìm thấy assignment này")
+
+    # ✅ Chặn xóa role cuối cùng — tránh user bị "mồ côi"
+    remaining = db.query(models.UserRole).filter(
+        models.UserRole.user_id == user_id,
+        models.UserRole.store_id == current_user["store_id"]
+    ).count()
+    if remaining <= 1:
+        raise HTTPException(400, "Không thể xóa role cuối cùng của user")
 
     db.delete(user_role)
     db.commit()
@@ -172,6 +219,7 @@ def delete_role(
 
 # =========================
 # ADD PERMISSION TO ROLE
+# ✅ Chỉ cho phép permission nằm trong danh sách đã định nghĩa
 # =========================
 @router.post("/{role_id}/permissions")
 def add_permission(
@@ -180,15 +228,24 @@ def add_permission(
     db: Session = Depends(get_db),
     current_user=Depends(require_permission("manage_roles"))
 ):
+    # ✅ Validate trước — không tạo permission tùy ý
+    if permission_name not in _VALID_PERMISSION_NAMES:
+        raise HTTPException(
+            400,
+            f"Permission không hợp lệ: '{permission_name}'"
+        )
+
     role = db.get(models.Role, role_id)
     if not role:
         raise HTTPException(404, "Role không tồn tại")
 
+    # Chỉ get từ DB — permissions đã được seed khi startup, không tạo mới
     permission = db.query(models.Permission).filter_by(name=permission_name).first()
     if not permission:
-        permission = models.Permission(name=permission_name)
-        db.add(permission)
-        db.flush()
+        raise HTTPException(
+            500,
+            f"Permission '{permission_name}' chưa được seed vào DB. Chạy lại startup."
+        )
 
     if permission not in role.permissions:
         role.permissions.append(permission)
