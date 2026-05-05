@@ -1,28 +1,25 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from app.database import SessionLocal
-from app.models import Invoice, Order
 
-router = APIRouter(
-    prefix="/invoices",
-    tags=["Invoices"]
-)
+from app.database import get_db
+from app.security import require_permission
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+from app.schemas.invoice import InvoiceOut, InvoiceCreate
+from app.services import invoice_service
 
-@router.post("/{order_id}")
-def create_invoice(order_id: int, db: Session = Depends(get_db)):
-    order = db.query(Order).get(order_id)
+router = APIRouter(prefix="/invoices", tags=["Invoices"])
 
-    invoice = Invoice(
-        order_id=order.id,
-        total=order.total
+
+@router.post("/{order_id}", response_model=InvoiceOut)
+def pay_order(
+    order_id: int,
+    data: InvoiceCreate,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("invoice:create"))
+):
+    return invoice_service.create_invoice(
+        db,
+        order_id=order_id,
+        user=user,
+        payment_method=data.payment_method
     )
-    db.add(invoice)
-    db.commit()
-    return invoice

@@ -145,6 +145,7 @@ class Product(Base, TimestampMixin):
 class OrderStatus(str, enum.Enum):
     draft = "draft"
     confirmed = "confirmed"
+    paid = "paid"
     cancelled = "cancelled"
     deleted = "deleted"
 

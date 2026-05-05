@@ -208,7 +208,7 @@ def get_current_user(
         user_id = payload.get("user_id")
         store_id = payload.get("store_id")
         jti = payload.get("jti")
-        permissions = payload.get("permissions", [])
+        permissions = load_user_permissions(user.id, user.store_id, db)
 
         if not user_id or not store_id or not jti:
             raise HTTPException(401, "Invalid token")

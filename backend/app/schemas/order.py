@@ -55,7 +55,6 @@ class OrderConfirm(BaseModel):
 # PAGINATION
 # =========================================================
 class OrderListResponse(BaseModel):
-    total: int
+    total: Optional[int]
     data: List[OrderOut]
-
-    # ✅ [SỬA] bỏ TypeVar T thừa (định nghĩa Generic nhưng không dùng)
+    has_more: bool
