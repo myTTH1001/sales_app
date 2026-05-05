@@ -2,13 +2,14 @@ from datetime import datetime
 from decimal import Decimal
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException
-from app.services.invoice_service import create_invoice_internal
+
 from app import models
 from app.schemas.order import OrderCreate
+from app.services.stock_service import apply_stock_movement, get_stock_for_update
 
 
 # =========================================================
-# INTERNAL: load order
+# INTERNAL HELPERS
 # =========================================================
 def _get_order_for_update(db: Session, order_id: int, store_id: int):
     order = (
@@ -47,63 +48,15 @@ def _load_order(db: Session, order_id: int, store_id: int):
 
 
 # =========================================================
-# STOCK HELPERS
-# =========================================================
-def _lock_stock(db: Session, product_id: int, store_id: int):
-    stock = (
-        db.query(models.Stock)
-        .filter(
-            models.Stock.product_id == product_id,
-            models.Stock.store_id == store_id
-        )
-        .with_for_update()
-        .first()
-    )
-    if not stock:
-        raise HTTPException(400, f"Sản phẩm {product_id} chưa có tồn kho")
-    return stock
-
-
-def _deduct_stock(db: Session, stock, quantity: int, item_id: int, user: dict, note=None):
-    if stock.quantity < quantity:
-        raise HTTPException(400, f"Không đủ hàng (còn {stock.quantity})")
-
-    stock.quantity -= quantity
-
-    db.add(models.StockMovement(
-        product_id=stock.product_id,
-        store_id=stock.store_id,
-        quantity=-quantity,
-        type=models.StockMovementType.SALE,
-        order_item_id=item_id,
-        user_id=user["user_id"],
-        note=note
-    ))
-
-
-def _return_stock(db: Session, stock, quantity: int, item_id: int, user: dict, note=None):
-    stock.quantity += quantity
-
-    db.add(models.StockMovement(
-        product_id=stock.product_id,
-        store_id=stock.store_id,
-        quantity=quantity,
-        type=models.StockMovementType.RETURN,
-        order_item_id=item_id,
-        user_id=user["user_id"],
-        note=note
-    ))
-
-
-# =========================================================
-# CREATE ORDER
+# CREATE ORDER (DRAFT)
 # =========================================================
 def create_order(db: Session, user: dict, data: OrderCreate):
     try:
         order = models.Order(
             user_id=user["user_id"],
             store_id=user["store_id"],
-            status=models.OrderStatus.draft
+            status=models.OrderStatus.draft,
+            created_at=datetime.utcnow()
         )
         db.add(order)
         db.flush()
@@ -147,14 +100,15 @@ def get_order(db: Session, user: dict, order_id: int):
 
 
 # =========================================================
-# CONFIRM ORDER
+# CONFIRM ORDER (TRỪ KHO)
 # =========================================================
-def confirm_order(db: Session, user: dict, order_id: int, payment_method: str, note=None):
+def confirm_order(db: Session, user: dict, order_id: int, note=None):
     try:
-        if payment_method not in ("cash", "card", "transfer"):
-            raise HTTPException(400, "Phương thức thanh toán không hợp lệ")
-
         order = _get_order_for_update(db, order_id, user["store_id"])
+
+        # ✅ Idempotent
+        if order.status == models.OrderStatus.confirmed:
+            return _load_order(db, order.id, user["store_id"])
 
         if order.status != models.OrderStatus.draft:
             raise HTTPException(400, f"Không thể confirm order ở trạng thái {order.status}")
@@ -172,10 +126,10 @@ def confirm_order(db: Session, user: dict, order_id: int, payment_method: str, n
         # 🔥 chống deadlock
         items = sorted(items, key=lambda x: x.product_id)
 
-        # 🔥 lock stock
+        # 🔥 lock stock trước
         stock_map = {}
         for item in items:
-            stock = _lock_stock(db, item.product_id, user["store_id"])
+            stock = get_stock_for_update(db, item.product_id, user["store_id"])
             stock_map[item.product_id] = stock
 
             if stock.quantity < item.quantity:
@@ -184,10 +138,18 @@ def confirm_order(db: Session, user: dict, order_id: int, payment_method: str, n
                     f"Sản phẩm {item.product_id} chỉ còn {stock.quantity}"
                 )
 
-        # 🔥 trừ kho
+        # 🔥 trừ kho (qua stock_service)
         for item in items:
-            stock = stock_map[item.product_id]
-            _deduct_stock(db, stock, item.quantity, item.id, user, note)
+            apply_stock_movement(
+                db,
+                product_id=item.product_id,
+                store_id=user["store_id"],
+                quantity=-item.quantity,
+                movement_type=models.StockMovementType.SALE,
+                user_id=user["user_id"],
+                order_item_id=item.id,
+                note=note or f"Confirm order #{order.id}"
+            )
 
         order.status = models.OrderStatus.confirmed
 
@@ -206,29 +168,36 @@ def cancel_order(db: Session, user: dict, order_id: int, reason=None):
     try:
         order = _get_order_for_update(db, order_id, user["store_id"])
 
+        # ✅ Idempotent
         if order.status == models.OrderStatus.cancelled:
-            raise HTTPException(400, "Order đã bị huỷ")
+            return _load_order(db, order.id, user["store_id"])
 
         if order.status == models.OrderStatus.paid:
             raise HTTPException(400, "Order đã thanh toán, không thể huỷ")
-        
+
+        # ❌ Không cho huỷ nếu đã có invoice
+        if order.invoice:
+            raise HTTPException(400, "Order đã có invoice")
+
         items = db.query(models.OrderItem).filter(
             models.OrderItem.order_id == order.id
         ).all()
 
+        # 🔥 nếu đã confirm → hoàn kho
         if order.status == models.OrderStatus.confirmed:
-            for item in sorted(items, key=lambda x: x.product_id):
-                stock = _lock_stock(db, item.product_id, user["store_id"])
-                _return_stock(db, stock, item.quantity, item.id, user, reason)
+            items = sorted(items, key=lambda x: x.product_id)
 
-            invoice = db.query(models.Invoice).filter(
-                models.Invoice.order_id == order.id
-            ).first()
-
-            if invoice:
-                if invoice.status != "paid":
-                    raise HTTPException(400, "Invoice không thể huỷ")
-                invoice.status = "cancelled"
+            for item in items:
+                apply_stock_movement(
+                    db,
+                    product_id=item.product_id,
+                    store_id=user["store_id"],
+                    quantity=item.quantity,
+                    movement_type=models.StockMovementType.RETURN,
+                    user_id=user["user_id"],
+                    order_item_id=item.id,
+                    note=reason or f"Cancel order #{order.id}"
+                )
 
         order.status = models.OrderStatus.cancelled
 
@@ -241,7 +210,7 @@ def cancel_order(db: Session, user: dict, order_id: int, reason=None):
 
 
 # =========================================================
-# LIST ORDERS
+# LIST ORDERS (PAGINATION)
 # =========================================================
 def list_orders(db: Session, user: dict, limit: int = 10, offset: int = 0):
     query = db.query(models.Order).filter(

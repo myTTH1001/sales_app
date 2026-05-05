@@ -1,3 +1,5 @@
+from enum import Enum
+
 from pydantic import BaseModel, Field
 from decimal import Decimal
 from datetime import datetime
@@ -9,11 +11,18 @@ class InvoiceOut(BaseModel):
     total: Decimal
     status: str
     payment_method: str
+    cashier_id: int | None
+    paid_at: datetime | None
     created_at: datetime
 
     class Config:
         from_attributes = True
 
 
+class PaymentMethod(str, Enum):
+    cash = "cash"
+    card = "card"
+    transfer = "transfer"
+
 class InvoiceCreate(BaseModel):
-    payment_method: str = Field(..., pattern="^(cash|card|transfer)$")
+    payment_method: PaymentMethod
