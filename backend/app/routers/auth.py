@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Form
 from fastapi.security import OAuth2PasswordRequestForm
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, Store, Role, Permission, UserRole
@@ -10,7 +11,8 @@ from app.security import (
     create_access_token, create_refresh_token,
     refresh_access_token, # logout_user,
     get_current_user, load_user_permissions,
-    get_or_create_owner_role, blacklist_token, blacklist_refresh_token
+    get_or_create_owner_role, blacklist_token, blacklist_refresh_token,
+    decode_refresh_token,
 )
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -113,8 +115,6 @@ def logout(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    from datetime import datetime, timezone
-
     # 1. Blacklist access token (lấy từ Authorization header qua get_current_user)
     exp = datetime.fromtimestamp(current_user["exp"], tz=timezone.utc)
     blacklist_token(current_user["jti"], exp, db)
@@ -128,5 +128,18 @@ def logout_with_token(
     token: str = Form(...),
     db: Session = Depends(get_db)
 ):
-    # Endpoint này nhận refresh token (dùng cho client không giữ access token)
-    blacklist_refresh_token(token, db)
+    """
+    Logout khi client không còn giữ access token (đã expire hoặc bị mất).
+    Xác thực danh tính qua chính refresh token:
+      - Decode + verify chữ ký JWT
+      - Verify user còn active trong đúng store
+    Sau khi xác thực, blacklist refresh token để vô hiệu hóa hoàn toàn.
+    """
+    # decode_refresh_token raise HTTPException nếu token không hợp lệ,
+    # đã hết hạn, bị blacklist, hoặc user không còn active.
+    payload = decode_refresh_token(token, db)
+
+    # Dùng payload đã decode — không cần decode lại lần 2
+    jti = payload["jti"]
+    exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+    blacklist_token(jti, exp, db)

@@ -209,7 +209,13 @@ def toggle_user_status(
 
     if user.id == current_user["user_id"]:
         raise HTTPException(400, "Không thể tự khóa tài khoản của mình")
-
+    # Cần thêm: manager không được khóa owner
+    target_roles = [
+        ur.role.name for ur in user.roles
+        if ur.store_id == current_user["store_id"]
+    ]
+    if "owner" in target_roles and "manage_roles" not in current_user["permissions"]:
+        raise HTTPException(403, "Không thể khóa tài khoản owner")
     user.is_active = payload.is_active
     db.commit()
     return {"message": f"User {'đã kích hoạt' if payload.is_active else 'đã bị khóa'}"}

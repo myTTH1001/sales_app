@@ -30,6 +30,7 @@ class Store(Base):
     products = relationship("Product", back_populates="store")
     orders = relationship("Order", back_populates="store")
     invoices = relationship("Invoice", back_populates="store")
+    stocks = relationship("Stock", back_populates="store")
     stock_movements = relationship("StockMovement",back_populates="store")
     def __repr__(self):
         return f"<Store name={self.name}>"
@@ -122,6 +123,7 @@ class Product(Base, TimestampMixin):
     name = Column(String, nullable=False)
     price = Column(Numeric(12, 2), nullable=False)
     image = Column(String, nullable=True)
+    stock = relationship("Stock", back_populates="product", uselist=False)
 
     # 🔥 Multi-store
     store_id = Column(Integer, ForeignKey("stores.id"), index=True, nullable=False)
@@ -231,6 +233,20 @@ class Invoice(Base, TimestampMixin):
     def __repr__(self):
         return f"<Invoice order_id={self.order_id} total={self.total}>"
 
+
+class Stock(Base):
+    __tablename__ = "stocks"
+
+    id = Column(Integer, primary_key=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), index=True)
+    store_id = Column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), index=True)
+    quantity = Column(Integer, nullable=False, default=0)
+
+    product = relationship("Product", back_populates="stock")
+    store   = relationship("Store",   back_populates="stocks")
+    __table_args__ = (
+        UniqueConstraint("product_id", "store_id", name="uq_stock_product_store"),
+    )
 
 class StockMovementType(str, enum.Enum):
     IMPORT   = "IMPORT"     # nhập hàng từ NCC

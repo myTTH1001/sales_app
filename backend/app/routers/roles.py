@@ -129,7 +129,6 @@ def assign_role(
     ).first()
     if not user:
         raise HTTPException(404, "User không tồn tại trong store này")
-    
     if not db.get(models.Role, payload.role_id):
         raise HTTPException(404, "Role không tồn tại")
 
@@ -209,7 +208,8 @@ def delete_role(
     if not role:
         raise HTTPException(404, "Role không tồn tại")
 
-    in_use = db.query(models.UserRole).filter_by(role_id=role_id).first()
+    in_use = db.query(models.UserRole).filter_by(role_id=role_id, store_id=current_user["store_id"]
+                                                 ).first()
     if in_use:
         raise HTTPException(400, "Không thể xóa role đang được gán cho user")
 
