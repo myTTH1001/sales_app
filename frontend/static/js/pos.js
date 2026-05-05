@@ -234,9 +234,10 @@ document.addEventListener("DOMContentLoaded", () => {
   loadProducts();
   renderCart();
   // tìm kiếm sản phẩm
-  const searchInput = document.getElementById("search-input")?.focus();
+  const searchInput = document.getElementById("search-input");
 
   if (searchInput) {
+    searchInput.focus();
     searchInput.addEventListener("input", (e) => {
       const keyword = e.target.value.trim().toLowerCase();
 

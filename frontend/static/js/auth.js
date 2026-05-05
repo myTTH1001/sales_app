@@ -31,7 +31,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // 👤 Hiển thị username
   const usernameEl = document.getElementById("username-text");
   if (usernameEl) {
-    usernameEl.innerText = " Xin chào, " + payload.sub;
+    usernameEl.innerText = "" + payload.sub;
   }
 
   // 🚪 Logout
