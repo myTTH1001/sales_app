@@ -199,6 +199,15 @@ def get_role(
     role = db.get(models.Role, role_id)
     if not role:
         raise HTTPException(404, "Role không tồn tại")
+
+    # ✅ chỉ trả về role đang được dùng trong store hiện tại — tránh lộ role của store khác
+    in_store = db.query(models.UserRole).filter_by(
+        role_id=role_id,
+        store_id=current_user["store_id"]
+    ).first()
+    if not in_store:
+        raise HTTPException(404, "Role không tồn tại")
+
     return RoleOut(id=role.id, name=role.name, permissions=[p.name for p in role.permissions])
 
 

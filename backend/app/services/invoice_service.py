@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
@@ -39,7 +39,7 @@ def create_invoice(
             status="paid",
             payment_method=payment_method,
             cashier_id=user["user_id"],
-            paid_at=datetime.utcnow()
+            paid_at=datetime.now(timezone.utc)
         )
 
         db.add(invoice)

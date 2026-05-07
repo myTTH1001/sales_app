@@ -32,7 +32,8 @@ def create_product(
     # check trùng tên trong store
     exists = db.query(models.Product).filter(
         models.Product.name == data.name,
-        models.Product.store_id == user["store_id"]
+        models.Product.store_id == user["store_id"],
+        models.Product.deleted_at.is_(None)
     ).first()
 
     if exists:
@@ -70,7 +71,8 @@ def get_products(
     offset: int = Query(0, ge=0)
 ):
     query = db.query(models.Product).filter(
-        models.Product.store_id == user["store_id"]
+        models.Product.store_id == user["store_id"],
+        models.Product.deleted_at.is_(None)
     )
 
     # 🔍 search
@@ -107,7 +109,8 @@ def get_product(
 ):
     product = db.query(models.Product).filter(
         models.Product.id == product_id,
-        models.Product.store_id == user["store_id"]
+        models.Product.store_id == user["store_id"],
+        models.Product.deleted_at.is_(None)
     ).first()
 
     if not product:
@@ -131,7 +134,8 @@ def update_product(
 ):
     product = db.query(models.Product).filter(
         models.Product.id == product_id,
-        models.Product.store_id == user["store_id"]
+        models.Product.store_id == user["store_id"],
+        models.Product.deleted_at.is_(None)
     ).first()
 
     if not product:
@@ -141,7 +145,8 @@ def update_product(
     if data.name and data.name != product.name:
         exists = db.query(models.Product).filter(
             models.Product.name == data.name,
-            models.Product.store_id == user["store_id"]
+            models.Product.store_id == user["store_id"],
+            models.Product.deleted_at.is_(None),
         ).first()
 
         if exists:
@@ -167,7 +172,8 @@ def delete_product(
 ):
     product = db.query(models.Product).filter(
         models.Product.id == product_id,
-        models.Product.store_id == user["store_id"]
+        models.Product.store_id == user["store_id"],
+        models.Product.deleted_at.is_(None)
     ).first()
 
     if not product:

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
@@ -57,7 +57,7 @@ def create_order(db: Session, user: dict, data: OrderCreate):
             user_id=user["user_id"],
             store_id=user["store_id"],
             status=models.OrderStatus.draft,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
         db.add(order)
         db.flush()

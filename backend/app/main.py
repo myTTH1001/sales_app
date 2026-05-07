@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from app.routers import products, orders, invoices, auth, users, roles
+from app.routers import products, orders, invoices, auth, users, roles, stock, reports
 import os
 from app.database import engine
 from app import models
@@ -57,6 +57,8 @@ app.include_router(roles.router, prefix="/api")
 app.include_router(users.router, prefix="/api") 
 app.include_router(orders.router, prefix="/api")
 app.include_router(invoices.router, prefix="/api")
+app.include_router(stock.router, prefix="/api")
+app.include_router(reports.router, prefix="/api")
 
 
 @app.get("/favicon.ico")

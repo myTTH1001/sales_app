@@ -124,7 +124,7 @@ def import_stock_api(
             note=note
         )
 
-        db.flush()
+        # db.flush()
         db.commit()
 
         return {"message": "Nhập kho thành công", "movement_id": movement.id}
