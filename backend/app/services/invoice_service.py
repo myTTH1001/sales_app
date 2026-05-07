@@ -1,9 +1,63 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from fastapi import HTTPException
 from app.services.stock_service import apply_stock_movement
 from app import models
+
+
+# =========================================================
+# GET ONE INVOICE
+# =========================================================
+def get_invoice(db: Session, *, invoice_id: int, user: dict):
+    invoice = db.query(models.Invoice).filter(
+        models.Invoice.id == invoice_id,
+        models.Invoice.store_id == user["store_id"]
+    ).first()
+
+    if not invoice:
+        raise HTTPException(404, "Invoice không tồn tại")
+
+    return invoice
+
+
+# =========================================================
+# LIST INVOICES
+# =========================================================
+def list_invoices(
+    db: Session,
+    *,
+    user: dict,
+    status: str | None = None,
+    cashier_id: int | None = None,
+    limit: int = 10,
+    offset: int = 0,
+):
+    query = db.query(models.Invoice).filter(
+        models.Invoice.store_id == user["store_id"]
+    )
+
+    if status:
+        query = query.filter(models.Invoice.status == status)
+
+    if cashier_id:
+        query = query.filter(models.Invoice.cashier_id == cashier_id)
+
+    total = query.with_entities(func.count()).scalar()
+
+    data = (
+        query.order_by(models.Invoice.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return {
+        "total": total,
+        "data": data,
+        "has_more": (offset + len(data)) < total,
+    }
 
 
 # =========================================================

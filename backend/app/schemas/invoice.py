@@ -26,3 +26,9 @@ class PaymentMethod(str, Enum):
 
 class InvoiceCreate(BaseModel):
     payment_method: PaymentMethod
+
+
+class InvoiceListResponse(BaseModel):
+    total: int
+    data: list[InvoiceOut]
+    has_more: bool
