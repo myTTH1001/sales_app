@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
-
+from app.services.stock_service import apply_stock_movement
 from app import models
 
 
@@ -91,8 +91,6 @@ def cancel_invoice(
             ).all()
 
             for item in items:
-                from app.services.stock_service import apply_stock_movement
-
                 apply_stock_movement(
                     db,
                     product_id=item.product_id,

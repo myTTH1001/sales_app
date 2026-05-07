@@ -168,6 +168,13 @@ def remove_role(
     if not user_role:
         raise HTTPException(404, "Không tìm thấy assignment này")
 
+    # ✅ [FIX #9] Chặn xóa role owner nếu caller không có manage_roles
+    # (tức là manager không được động vào role của owner)
+    target_role = db.get(models.Role, role_id)
+    if target_role and target_role.name == "owner":
+        if "manage_roles" not in current_user["permissions"]:
+            raise HTTPException(403, "Không thể xóa role owner của user khác")
+
     # ✅ Chặn xóa role cuối cùng — tránh user bị "mồ côi"
     remaining = db.query(models.UserRole).filter(
         models.UserRole.user_id == user_id,

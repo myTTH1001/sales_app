@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException
 
@@ -102,7 +103,7 @@ def get_order(db: Session, user: dict, order_id: int):
 # =========================================================
 # CONFIRM ORDER (TRỪ KHO)
 # =========================================================
-def confirm_order(db: Session, user: dict, order_id: int, note=None):
+def confirm_order(db: Session, user: dict, order_id: int, payment_method: str, note=None):
     try:
         order = _get_order_for_update(db, order_id, user["store_id"])
 
@@ -116,17 +117,21 @@ def confirm_order(db: Session, user: dict, order_id: int, note=None):
         if order.invoice:
             raise HTTPException(400, "Order đã có invoice")
 
-        items = db.query(models.OrderItem).filter(
-            models.OrderItem.order_id == order.id
-        ).all()
+        # ✅ [FIX #6] Query items 1 lần duy nhất, dùng chung cho validate + apply movement
+        # _load_order cuối cùng sẽ joinedload lại sau commit — không cần query thêm
+        items = (
+            db.query(models.OrderItem)
+            .filter(models.OrderItem.order_id == order.id)
+            .all()
+        )
 
         if not items:
             raise HTTPException(400, "Order chưa có sản phẩm")
 
-        # 🔥 chống deadlock
+        # 🔥 chống deadlock — sort theo product_id trước khi lock
         items = sorted(items, key=lambda x: x.product_id)
 
-        # 🔥 lock stock trước
+        # 🔥 lock stock + validate tồn kho
         stock_map = {}
         for item in items:
             stock = get_stock_for_update(db, item.product_id, user["store_id"])
@@ -138,7 +143,7 @@ def confirm_order(db: Session, user: dict, order_id: int, note=None):
                     f"Sản phẩm {item.product_id} chỉ còn {stock.quantity}"
                 )
 
-        # 🔥 trừ kho (qua stock_service)
+        # 🔥 trừ kho — dùng lại items đã sort, không query lại
         for item in items:
             apply_stock_movement(
                 db,
@@ -154,6 +159,7 @@ def confirm_order(db: Session, user: dict, order_id: int, note=None):
         order.status = models.OrderStatus.confirmed
 
         db.commit()
+        # _load_order thực hiện joinedload — đây là lần duy nhất load đầy đủ quan hệ
         return _load_order(db, order.id, user["store_id"])
 
     except Exception:
@@ -179,9 +185,13 @@ def cancel_order(db: Session, user: dict, order_id: int, reason=None):
         if order.invoice:
             raise HTTPException(400, "Order đã có invoice")
 
-        items = db.query(models.OrderItem).filter(
-            models.OrderItem.order_id == order.id
-        ).all()
+        # ✅ [FIX #6] Query items 1 lần, dùng chung cho cả nhánh hoàn kho
+        # _load_order cuối sẽ joinedload lại — không cần query thêm
+        items = (
+            db.query(models.OrderItem)
+            .filter(models.OrderItem.order_id == order.id)
+            .all()
+        )
 
         # 🔥 nếu đã confirm → hoàn kho
         if order.status == models.OrderStatus.confirmed:
@@ -218,7 +228,12 @@ def list_orders(db: Session, user: dict, limit: int = 10, offset: int = 0):
         models.Order.deleted_at.is_(None)
     )
 
-    total = query.count() if offset == 0 else None
+    # ✅ [FIX #5] Luôn đếm total — không phụ thuộc offset
+    # Dùng query tách biệt để tránh conflict với options/order_by của query chính
+    total = db.query(func.count(models.Order.id)).filter(
+        models.Order.store_id == user["store_id"],
+        models.Order.deleted_at.is_(None)
+    ).scalar()
 
     orders = query.options(
         joinedload(models.Order.items)

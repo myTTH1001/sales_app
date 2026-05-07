@@ -242,5 +242,13 @@ def delete_user(
     if user.id == current_user["user_id"]:
         raise HTTPException(400, "Không thể tự xóa tài khoản của mình")
 
+    # ✅ [FIX #8] Xóa toàn bộ UserRole của user trong store này khi soft delete.
+    # Nếu không xóa, các UserRole "rác" vẫn tồn tại trong DB — gây lỗi nếu
+    # có logic restore hoặc query UserRole trực tiếp sau này.
+    db.query(models.UserRole).filter(
+        models.UserRole.user_id == user_id,
+        models.UserRole.store_id == current_user["store_id"]
+    ).delete(synchronize_session=False)
+
     user.deleted_at = datetime.now(timezone.utc)
     db.commit()

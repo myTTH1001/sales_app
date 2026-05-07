@@ -208,7 +208,6 @@ def get_current_user(
         user_id = payload.get("user_id")
         store_id = payload.get("store_id")
         jti = payload.get("jti")
-        permissions = load_user_permissions(user.id, user.store_id, db)
 
         if not user_id or not store_id or not jti:
             raise HTTPException(401, "Invalid token")
@@ -226,7 +225,9 @@ def get_current_user(
 
         if user.store_id != store_id:
             raise HTTPException(403, "Sai store")
-
+        
+        permissions = load_user_permissions(user.id, user.store_id, db)
+        # permissions = payload.get("permissions") or load_user_permissions(user.id, user.store_id, db)
         return {
             "user_id": user.id,
             "store_id": user.store_id,

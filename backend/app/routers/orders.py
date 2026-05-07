@@ -65,7 +65,6 @@ def confirm_order(
     db: Session = Depends(get_db),
     user=Depends(require_permission("order:confirm"))
 ):
-    # ✅ [SỬA] truyền note vào service thay vì bỏ qua
     return order_service.confirm_order(db, user, order_id, 
         payment_method=data.payment_method, note=data.note)
 
@@ -80,5 +79,4 @@ def cancel_order(
     db: Session = Depends(get_db),
     user=Depends(require_permission("order:cancel"))
 ):
-    # ✅ [SỬA] truyền reason vào service thay vì bỏ qua
     return order_service.cancel_order(db, user, order_id, reason=data.reason)

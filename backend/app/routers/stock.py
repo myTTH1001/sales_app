@@ -47,6 +47,42 @@ def list_stock(db: Session = Depends(get_db), current_user=Depends(get_current_u
     return [{"product_id": s.product_id, "quantity": s.quantity} for s in stocks]
 
 
+
+# =========================================================
+# 🔹 MOVEMENTS
+# =========================================================
+@router.get("/movements", dependencies=[Depends(require_permission("stock:view"))])
+def stock_movements(
+    product_id: int = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    query = db.query(models.StockMovement).filter(
+        models.StockMovement.store_id == current_user["store_id"]
+    )
+
+    if product_id:
+        validate_product(db, product_id, current_user["store_id"])
+        query = query.filter(models.StockMovement.product_id == product_id)
+
+    movements = query.order_by(
+        models.StockMovement.created_at.desc()
+    ).limit(limit).all()
+
+    return [
+        {
+            "id": m.id,
+            "product_id": m.product_id,
+            "quantity": m.quantity,
+            "type": m.type,
+            "created_at": m.created_at,
+            "note": m.note,
+            "transfer_ref": m.transfer_ref
+        }
+        for m in movements
+    ]
+
 # =========================================================
 # 🔹 GET STOCK
 # =========================================================
@@ -163,38 +199,3 @@ def transfer_stock_api(
         db.rollback()
         raise e
 
-
-# =========================================================
-# 🔹 MOVEMENTS
-# =========================================================
-@router.get("/movements", dependencies=[Depends(require_permission("stock:view"))])
-def stock_movements(
-    product_id: int = None,
-    limit: int = 50,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
-):
-    query = db.query(models.StockMovement).filter(
-        models.StockMovement.store_id == current_user["store_id"]
-    )
-
-    if product_id:
-        validate_product(db, product_id, current_user["store_id"])
-        query = query.filter(models.StockMovement.product_id == product_id)
-
-    movements = query.order_by(
-        models.StockMovement.created_at.desc()
-    ).limit(limit).all()
-
-    return [
-        {
-            "id": m.id,
-            "product_id": m.product_id,
-            "quantity": m.quantity,
-            "type": m.type,
-            "created_at": m.created_at,
-            "note": m.note,
-            "transfer_ref": m.transfer_ref
-        }
-        for m in movements
-    ]

@@ -50,6 +50,8 @@ PERMISSIONS: Dict[str, PermissionGroup] = {
         permissions=[
             "invoice:view",
             "invoice:export",
+            "invoice:create",
+            "invoice:cancel",
         ]
     ),
 
@@ -88,7 +90,7 @@ ROLE_TEMPLATES: Dict[str, List[str]] = {
         "manage_users",
         "product:view", "product:create", "product:update", "product:delete",
         "order:view", "order:create", "order:confirm", "order:cancel",
-        "invoice:view", "invoice:export",
+        "invoice:view", "invoice:export", "invoice:create", "invoice:cancel",
         "stock:view", "stock:import", "stock:adjust", "stock:return", "stock:transfer",
         "report:view", "report:export",
     ],
@@ -103,7 +105,7 @@ ROLE_TEMPLATES: Dict[str, List[str]] = {
     "cashier": [
         "product:view",
         "order:view", "order:create", "order:confirm",
-        "invoice:view",
+        "invoice:view", "invoice:create", "invoice:cancel",
         "stock:view",   # chỉ xem — không chạm tồn kho
     ],
 }
